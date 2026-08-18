@@ -1,0 +1,11 @@
+.gradle/
+.idea/
+build/
+**/build
+**/*.iml
+**/*.jar
+# Must stay AFTER the **/*.jar rule above, or the Gradle wrapper jar is never
+# committed and a fresh clone cannot build.
+!gradle/wrapper/**
+.DS_Store
+**/.DS_Store

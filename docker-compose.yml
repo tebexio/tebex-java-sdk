@@ -1,0 +1,44 @@
+# OpenAPI SDK generation for the Tebex Java SDK.
+#
+# The `sdk-generator` service is a one-shot (run-and-exit) container that reads
+# the OpenAPI contract at ./apis/headless-api.yaml and (re)generates a Java SDK
+# into ./headless-api. That directory is a Gradle subproject (see
+# settings.gradle.kts), so any other module can consume it with
+# `implementation(project(":headless-api"))` — :tbx does exactly that, with `api`
+# so the generated types reach its consumers' compile classpath too.
+#
+# Paths below are relative to this file, i.e. to the SDK repository root. When this
+# repository is checked out as a git submodule of a consuming project, run the
+# command from THIS directory, not the superproject root.
+#
+# Usage:
+#   docker compose run --rm sdk-generator
+#
+# The container only writes the generated sources under headless-api/src; the
+# hand-written headless-api/build.gradle.kts and .openapi-generator-ignore are
+# preserved (see the ignore file for the full skip list).
+services:
+  sdk-generator:
+    image: openapitools/openapi-generator-cli:v7.24.0
+    volumes:
+      - ./:/local
+    working_dir: /local
+    command:
+      - generate
+      - --input-spec=/local/apis/headless-api.yaml
+      - --generator-name=java
+      - --output=/local/headless-api
+      # okhttp-gson (the java generator's default library) is Java 8 compatible,
+      # so EVERY module in the repo can consume the SDK — including the Java 8
+      # platform plugins (bukkit, bungeecord, velocity, folia, …), not just the
+      # Java 17 modules. The `native` library would emit java.net.http code that
+      # only compiles on Java 11+.
+      - --library=okhttp-gson
+      # Keep the emitted sources stable across runs (no per-run timestamps) so
+      # regeneration produces clean, reviewable diffs. dateLibrary=java8 uses
+      # java.time, which is available on Java 8.
+      # useJakartaEe=false: the generator emits javax.annotation.Nonnull/Nullable
+      # (JSR-305, from com.google.code.findbugs:jsr305) and javax.annotation.
+      # Generated (present in the Java 8 JDK). The jakarta.annotation-api artifact
+      # does NOT contain Nonnull/Nullable, so useJakartaEe=true fails to compile.
+      - --additional-properties=serializationLibrary=gson,dateLibrary=java8,hideGenerationTimestamp=true,useJakartaEe=false,openApiNullable=false,invokerPackage=io.tebex.headless.invoker,apiPackage=io.tebex.headless.api,modelPackage=io.tebex.headless.model,groupId=io.tebex,artifactId=headless-api,artifactVersion=3.0.0
