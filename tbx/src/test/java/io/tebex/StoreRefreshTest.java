@@ -30,9 +30,8 @@ import org.junit.jupiter.api.Test;
  * the Headless API and caches it, and a failed refresh keeps the previous
  * catalogue without stopping the tick loop.
  *
- * <p>Note what these do <em>not</em> assert: TASK_004's five-minute cadence. There
- * is no clock seam in {@code tbx}, so the interval cannot be advanced in a test —
- * that prerequisite is recorded in {@code .changelog/todo.md}. These cover the
+ * <p>Note what these do <em>not</em> assert: TASK_004's five-minute cadence, which
+ * is covered in {@link EngineTimersTest} against the engine clock. These cover the
  * refresh behaviour, not its timing.
  */
 class StoreRefreshTest {

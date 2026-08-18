@@ -1,10 +1,9 @@
 # Tebex Java SDK
 
-The platform-agnostic Java SDK for [Tebex](https://tebex.io) — the merchant-of-record
+The platform-agnostic Java SDK for [Tebex](https://tebex.io) - the merchant-of-record
 platform that lets server administrators run a store for their game servers.
 
-This repository is consumed by [Tebex-Minecraft](https://github.com/tebexio/Tebex-Minecraft)
-as a git submodule, and is intended to be reusable by any JVM integration.
+This repository is primarily consumed by [Tebex-Minecraft](https://github.com/tebexio/Tebex-Minecraft) as a git submodule, and is intended to be reusable by any JVM integration.
 
 ## Modules
 
@@ -48,18 +47,13 @@ The suite is requirements-based: every test carries an `@Requirement("ID")` tag 
 test without a requirement. `CodeRequirementsTest` and `BytecodeTargetTest` enforce
 source hygiene (`CODE_001`–`CODE_005`) and the Java 8 target (`CODE_006`).
 
-Two gates are currently red by design, carried over as known debt at the time of
-extraction: `CODE_003` (Javadoc coverage) and `TraceabilityTest` (27 requirements
-without tests). A build is "clean" today at **106 tests, 2 failures**; a third failure
-is a regression.
-
 ## Consuming as a submodule
 
 ```bash
 git submodule add https://github.com/tebexio/tebex-java-sdk.git tebex-java-sdk
 ```
 
-Then wire it into the consuming Gradle build as a composite build:
+Then add this into the consuming Gradle build as a composite build:
 
 ```kotlin
 // settings.gradle.kts

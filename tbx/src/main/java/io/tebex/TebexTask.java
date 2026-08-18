@@ -67,7 +67,21 @@ public class TebexTask {
      * @return {@code true} if the due time has passed
      */
     public boolean isDue() {
-        return Instant.now().getEpochSecond() >= dueAt;
+        return isDue(Instant.now().getEpochSecond());
+    }
+
+    /**
+     * Returns whether the task is due at the given time.
+     *
+     * <p>The engine passes its own clock here rather than letting the task read
+     * the wall clock, so that fast-forwarding the engine (TASK_000) brings queued
+     * deliverables forward with everything else.
+     *
+     * @param nowEpochSeconds the current time in epoch seconds UTC
+     * @return {@code true} if the due time has passed
+     */
+    public boolean isDue(long nowEpochSeconds) {
+        return nowEpochSeconds >= dueAt;
     }
 
     /**

@@ -2,7 +2,16 @@ package io.tebex.http;
 
 import io.tebex.headless.api.BasketsApi;
 import io.tebex.headless.invoker.ApiClient;
+import io.tebex.headless.invoker.ApiException;
+import io.tebex.headless.model.ApplyCoupon200Response;
+import io.tebex.headless.model.ApplyCouponRequest;
+import io.tebex.headless.model.ApplyCreatorCode200Response;
+import io.tebex.headless.model.ApplyCreatorCodeRequest;
+import io.tebex.headless.model.ModelPackage;
+import io.tebex.headless.model.PackageResponse;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
 /**
  * Instantiable access point to the generated Tebex Headless API clients
@@ -84,6 +93,67 @@ public final class HeadlessApi {
      */
     public void setToken(String publicToken) {
         client.setServerVariables(Collections.singletonMap(TOKEN_VARIABLE, publicToken == null ? "" : publicToken));
+    }
+
+    /**
+     * Returns the store's packages that are currently discounted (TBX_016).
+     *
+     * <p>A sale is not a separate endpoint on the Headless contract: it is a
+     * discount carried on the package itself, so the sale listing is the package
+     * listing filtered by that discount. Doing the filtering here means every
+     * integration asking "what is on sale" gets the same answer.
+     *
+     * @return the discounted packages, never {@code null}
+     * @throws ApiException if the packages could not be fetched
+     */
+    public List<ModelPackage> PackagesOnSale() throws ApiException {
+        PackageResponse response = Headless.getAllPackages();
+        List<ModelPackage> all = response == null ? null : response.getData();
+        if (all == null) {
+            return Collections.emptyList();
+        }
+
+        List<ModelPackage> onSale = new ArrayList<ModelPackage>();
+        for (ModelPackage candidate : all) {
+            Float discount = candidate.getDiscount();
+            if (discount != null && discount > 0f) {
+                onSale.add(candidate);
+            }
+        }
+        return onSale;
+    }
+
+    /**
+     * Applies a discount code to a basket (TBX_019).
+     *
+     * @param basketIdent the basket to apply the code to
+     * @param couponCode  the discount code the customer entered
+     * @return {@code true} if the store accepted the code
+     * @throws ApiException if the request failed
+     */
+    public boolean ApplyCoupon(String basketIdent, String couponCode) throws ApiException {
+        ApplyCouponRequest request = new ApplyCouponRequest();
+        request.setCouponCode(couponCode);
+        ApplyCoupon200Response response = Headless.applyCoupon(basketIdent, request);
+        // A refusal the API chose to report in the body is a "no", not a failure:
+        // an unrecognised code is something the customer mistyped.
+        return response != null && Boolean.TRUE.equals(response.getSuccess());
+    }
+
+    /**
+     * Applies a creator code to a basket, so the named creator is credited with
+     * the sale (TBX_018).
+     *
+     * @param basketIdent the basket to apply the code to
+     * @param creatorCode the creator code the customer entered
+     * @return {@code true} if the store accepted the code
+     * @throws ApiException if the request failed
+     */
+    public boolean ApplyCreatorCode(String basketIdent, String creatorCode) throws ApiException {
+        ApplyCreatorCodeRequest request = new ApplyCreatorCodeRequest();
+        request.setCreatorCode(creatorCode);
+        ApplyCreatorCode200Response response = Headless.applyCreatorCode(basketIdent, request);
+        return response != null && Boolean.TRUE.equals(response.getSuccess());
     }
 
     /**

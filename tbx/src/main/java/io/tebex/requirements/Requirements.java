@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * The machine-readable registry of every requirement the SDK is verified
@@ -50,8 +51,13 @@ public class Requirements {
         require("TBX_035", "deliverable commands with delays are delayed for the requested amount of time");
         require("TBX_036", "commands are marked completed immediately after they apply. they are remembered internally until deleted from tebex, such that a repeat issue of that command makes no changes");
         require("TBX_037", "plugin logs api accepts a valid plugin log");
-        require("TBX_038", "update check returns true if there is a newer version semantically than our current");
-        require("TBX_039", "update check returns true if there is a newer plugin version semantically than our current");
+        defer("TBX_038", "update check returns true if there is a newer version semantically than our current",
+                "there is no endpoint to check a version against yet: neither the plugin api client nor the "
+                        + "headless contract in this repository exposes one, and inventing a url and payload "
+                        + "shape would make the test prove only that the invention matches itself");
+        defer("TBX_039", "update check returns true if there is a newer plugin version semantically than our current",
+                "deferred with TBX_038 — the same missing endpoint, for the platform plugin's version rather "
+                        + "than the sdk's");
         require("TBX_040", "tasks that are intended to execute on the main thread can be executed on the main thread");
         require("TBX_041", "the tbx project must never implement or require any minecraft packages");
         require("TBX_042", "a store's public webstore information can be retrieved using the public token with the headless api");
@@ -83,12 +89,18 @@ public class Requirements {
 
         require("TBX_061", "the store catalogue is refreshed on a schedule and cached for callers, and a refresh that fails keeps the previous catalogue and does not stop the engine loop");
 
+        require("TBX_062", "deliverables are handed to the command hook one at a time and in the order the queue returned them: the next command is dispatched only after the hook call for the previous one has returned, so a purchase and the removal that follows it cannot be applied out of order");
+        require("TBX_063", "a deliverable's player tags are resolved from the queue payload before it reaches the command hook, taking the id tags from the uuid, then from the xuid for a bedrock player who has none, and only then from the username");
+
         require("CFG_001", "the /buy command name can be changed via configuration");
         require("CFG_002", "the /buy command can be disabled via configuration");
         require("CFG_003", "debug mode can be enabled/disabled via configuration");
         require("CFG_004", "collecting and reporting plugin logs can be enabled/disabled via config and is respected");
         require("CFG_005", "proxy mode setting via config forces isOnlineMode to true");
-        require("CFG_006", "an invalid config.yml spawns a new config.yml, renaming the old one to config.old.yml");
+        defer("CFG_006", "an invalid config.yml spawns a new config.yml, renaming the old one to config.old.yml",
+                "the sdk does no file io and owns no config format: Configuration is a hook the host implements "
+                        + "(see CFG_001-CFG_005, which are verified through that hook), so detecting a corrupt "
+                        + "config.yml and rotating it is the consuming integration's behaviour to build and test");
 
         require("TASK_000", "task timers can be fast-forwarded x seconds for testing purposes");
         require("TASK_001", "the command queue is checked every 120 seconds. it does not stop checking even if the task loop fails");
@@ -114,11 +126,38 @@ public class Requirements {
      * @param description the behaviour the requirement describes
      */
     private static void require(String id, String description) {
-        Required requirement = new Required(id, description);
-        if (requirements.containsKey(id)) {
-            throw new IllegalArgumentException("Requirement with id " + id + " already exists");
+        register(new Required(id, description));
+    }
+
+    /**
+     * Registers a requirement the project has deliberately not built yet.
+     *
+     * <p>The traceability gate skips deferred requirements when it looks for
+     * uncovered ones, and reports them separately in the matrix. The reason is
+     * required and is expected to say what is missing — not that the work is
+     * outstanding, which the deferral already says.
+     *
+     * @param id          the requirement id
+     * @param description the behaviour the requirement describes
+     * @param reason      why no covering test is expected yet
+     */
+    private static void defer(String id, String description, String reason) {
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new IllegalArgumentException("Deferring " + id + " requires a reason");
         }
-        requirements.put(id, requirement);
+        register(new Required(id, description, reason));
+    }
+
+    /**
+     * Adds a requirement to the registry, rejecting a duplicate id.
+     *
+     * @param requirement the requirement to register
+     */
+    private static void register(Required requirement) {
+        if (requirements.containsKey(requirement.getId())) {
+            throw new IllegalArgumentException("Requirement with id " + requirement.getId() + " already exists");
+        }
+        requirements.put(requirement.getId(), requirement);
     }
 
     /**
@@ -147,5 +186,21 @@ public class Requirements {
      */
     public static Set<String> ids() {
         return Collections.unmodifiableSet(requirements.keySet());
+    }
+
+    /**
+     * Returns the ids of the requirements that have been deliberately deferred,
+     * and so are not expected to have a covering test yet.
+     *
+     * @return the deferred ids
+     */
+    public static Set<String> deferredIds() {
+        Set<String> deferred = new TreeSet<String>();
+        for (Required requirement : requirements.values()) {
+            if (requirement.isDeferred()) {
+                deferred.add(requirement.getId());
+            }
+        }
+        return Collections.unmodifiableSet(deferred);
     }
 }

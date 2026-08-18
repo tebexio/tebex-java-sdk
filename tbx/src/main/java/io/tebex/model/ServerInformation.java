@@ -38,6 +38,12 @@ public final class ServerInformation {
         return server;
     }
 
+    /**
+     * Returns the store's public token, which scopes every Headless API call
+     * (TBX_014, TBX_015, TBX_042).
+     *
+     * @return the public token
+     */
     public String getPublicToken() {
         return publicToken;
     }

@@ -14,9 +14,10 @@ import com.google.gson.annotations.SerializedName;
  * from JSON for offline commands and injected by {@code PluginApi} for online
  * ones.
  *
- * <p>The command string is returned <em>verbatim</em>. The old SDK substituted
- * placeholders here, but that requires platform services this SDK deliberately
- * does not have; placeholder substitution belongs above the API layer.
+ * <p>The command string is returned <em>verbatim</em>, tags and all: this is the
+ * model of what the API sent, not of what will be run. The player tags are
+ * resolved once, on the dispatch path in {@code Plugin}, immediately before the
+ * command reaches the host's command hook (TBX_063).
  */
 public final class QueuedCommand {
 
@@ -56,7 +57,7 @@ public final class QueuedCommand {
 
     /**
      * Returns the raw command line to execute, without a leading slash and with
-     * any Tebex placeholders left intact.
+     * its Tebex tags left intact.
      *
      * @return the command string
      */

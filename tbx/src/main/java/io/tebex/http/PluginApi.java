@@ -60,9 +60,10 @@ import java.util.concurrent.Executors;
  * startup analytics endpoint are separate services on separate domains. Each has
  * its own injectable base URL.
  *
- * <p><b>What this class deliberately does not do.</b> It performs no placeholder
- * substitution on command strings (the old SDK did, using platform services this
- * SDK does not have), holds no secret key of its own (every authenticated call
+ * <p><b>What this class deliberately does not do.</b> It leaves command strings
+ * exactly as the API sent them — their tags are resolved on the dispatch path in
+ * {@code Plugin}, where the delivery is actually made — holds no secret key of
+ * its own (every authenticated call
  * takes one, so key rotation cannot leave a stale copy behind), and owns no
  * queue state — batching callers pass the list to send and decide what to do with
  * the outcome.
