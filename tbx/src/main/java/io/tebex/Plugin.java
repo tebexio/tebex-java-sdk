@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
@@ -53,6 +54,13 @@ public class Plugin {
 
     /** The buy command's name when the configuration does not override it. */
     private static final String DEFAULT_BUY_COMMAND = "buy";
+
+    /**
+     * What every command that needs the store says when no key has been adopted.
+     * Shared so the several commands that make the same refusal make it in the
+     * same words.
+     */
+    private static final String NOT_CONNECTED = "this server is not connected to a store yet.";
 
     /**
      * How long a command that calls the API waits before giving up. Bounded
@@ -311,10 +319,16 @@ public class Plugin {
                 out.addAll(goals());
                 break;
             case "checkout":
+                out.addAll(Arrays.asList(checkout(args, playerUsername)));
+                break;
             case "sendlink":
+                out.addAll(Arrays.asList(sendLink(args)));
+                break;
             case "ban":
+                out.addAll(Arrays.asList(ban(args)));
+                break;
             case "lookup":
-                out.add("'" + command + "' is not implemented yet.");
+                out.addAll(Arrays.asList(lookup(args)));
                 break;
             case "debug":
                 if (args.length < 1) {
@@ -391,8 +405,8 @@ public class Plugin {
      * @return the lines to report back to the caller
      */
     private String[] buy(String[] args, String username) {
-        if (key == null || key.trim().isEmpty()) {
-            return singleLine("this server is not connected to a store yet.");
+        if (!isConnected()) {
+            return singleLine(NOT_CONNECTED);
         }
         if (args.length < 1 || args[0].trim().isEmpty()) {
             return singleLine("usage: /" + buyCommandName() + " <package id>");
@@ -403,10 +417,8 @@ public class Plugin {
             return singleLine("the " + buyCommandName() + " command must be run by a player.");
         }
 
-        int packageId;
-        try {
-            packageId = Integer.parseInt(args[0].trim());
-        } catch (NumberFormatException notANumber) {
+        Integer packageId = parsePackageId(args[0]);
+        if (packageId == null) {
             return singleLine("'" + args[0] + "' is not a package id.");
         }
 
@@ -424,6 +436,224 @@ public class Plugin {
     }
 
     /**
+     * Creates a checkout link on an operator's behalf (TBX_064).
+     *
+     * <p>Distinct from the buy command in one way that matters: the customer is
+     * named rather than assumed, so the console can create a link for a player
+     * who is not there to run a command themselves. A player who omits the name
+     * gets their own, which is the only defensible default.
+     *
+     * @param args     the command arguments: the package id, then optionally the
+     *                 username to create the link for
+     * @param username the calling player, empty for console
+     * @return the lines to report back to the caller
+     */
+    private String[] checkout(String[] args, String username) {
+        if (!isConnected()) {
+            return singleLine(NOT_CONNECTED);
+        }
+        if (args.length < 1 || args[0].trim().isEmpty()) {
+            return singleLine("usage: /tebex checkout <package id> [username]");
+        }
+
+        Integer packageId = parsePackageId(args[0]);
+        if (packageId == null) {
+            return singleLine("'" + args[0] + "' is not a package id.");
+        }
+
+        String customer = args.length > 1 && !args[1].trim().isEmpty()
+                ? args[1].trim()
+                : (username == null ? "" : username.trim());
+        if (customer.isEmpty()) {
+            // Console with no name given: the store needs a customer for the
+            // basket, and there is nobody to infer here.
+            return singleLine("usage: /tebex checkout <package id> <username> - "
+                    + "the console must name the customer.");
+        }
+
+        try {
+            CheckoutUrl checkout = txe.PluginApi()
+                    .createCheckoutUrl(key, packageId, customer)
+                    .get(BLOCKING_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return new String[] {
+                "Checkout link for " + customer + ":",
+                checkout.getUrl(),
+            };
+        } catch (Exception failure) {
+            return singleLine("Could not create a checkout link: " + rootMessage(failure));
+        }
+    }
+
+    /**
+     * Creates a checkout link for a package and delivers it to a named player
+     * (TBX_065).
+     *
+     * <p>The link goes to the player rather than back to the caller — that is the
+     * whole point of the command, so an operator helping someone buy something
+     * does not have to relay a url by hand. Everything that could stop the
+     * delivery is checked <em>before</em> the checkout is created: without the
+     * player actions hook, or with the recipient absent, creating a basket
+     * nobody will ever see is worse than refusing, so the command refuses and
+     * points at {@code /tebex checkout} instead.
+     *
+     * @param args the command arguments: the username, then the package id
+     * @return the lines to report back to the caller
+     */
+    private String[] sendLink(String[] args) {
+        if (!isConnected()) {
+            return singleLine(NOT_CONNECTED);
+        }
+        if (args.length < 2 || args[0].trim().isEmpty() || args[1].trim().isEmpty()) {
+            return singleLine("usage: /tebex sendlink <username> <package id>");
+        }
+
+        String recipient = args[0].trim();
+        Integer packageId = parsePackageId(args[1]);
+        if (packageId == null) {
+            return singleLine("'" + args[1] + "' is not a package id.");
+        }
+
+        if (playerActions == null) {
+            return singleLine("no player actions hook is installed, so the link cannot be sent - "
+                    + "use '/tebex checkout " + packageId + " " + recipient + "' to get it yourself.");
+        }
+        if (!playerActions.IsOnline(recipient)) {
+            return singleLine(recipient + " is not online, so the link would go nowhere.");
+        }
+
+        try {
+            CheckoutUrl checkout = txe.PluginApi()
+                    .createCheckoutUrl(key, packageId, recipient)
+                    .get(BLOCKING_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            playerActions.SendMessage(recipient, "Complete your purchase here: " + checkout.getUrl());
+            return singleLine("Checkout link sent to " + recipient + ".");
+        } catch (Exception failure) {
+            return singleLine("Could not send a checkout link: " + rootMessage(failure));
+        }
+    }
+
+    /**
+     * Bans a player from the webstore (TBX_066).
+     *
+     * <p>The store records an ip alongside the account, but no hook exposes a
+     * player's connection, so the ip is sent empty rather than guessed: an
+     * invented address would ban somebody else. The account ban is the part this
+     * command can make honestly.
+     *
+     * <p>A store that declines the ban is reported as an outcome, not a failure —
+     * the operator needs to know the ban did not take, and nothing went wrong in
+     * the SDK.
+     *
+     * @param args the command arguments: the player, then optionally the reason,
+     *             which may be several words
+     * @return the lines to report back to the caller
+     */
+    private String[] ban(String[] args) {
+        if (!isConnected()) {
+            return singleLine(NOT_CONNECTED);
+        }
+        if (args.length < 1 || args[0].trim().isEmpty()) {
+            return singleLine("usage: /tebex ban <player> [reason]");
+        }
+
+        String player = args[0].trim();
+        // The reason is the rest of the line: an operator writes a sentence, not
+        // a single token.
+        String reason = args.length > 1
+                ? String.join(" ", Arrays.copyOfRange(args, 1, args.length)).trim()
+                : "";
+
+        try {
+            boolean accepted = txe.PluginApi()
+                    .createBan(key, player, "", reason)
+                    .get(BLOCKING_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (!accepted) {
+                return singleLine("The store did not accept the ban for " + player + ".");
+            }
+            return singleLine(reason.isEmpty()
+                    ? player + " was banned from the webstore."
+                    : player + " was banned from the webstore: " + reason);
+        } catch (Exception failure) {
+            return singleLine("Could not ban " + player + ": " + rootMessage(failure));
+        }
+    }
+
+    /**
+     * Shows the store's record of a player (TBX_067).
+     *
+     * <p>"No such customer" is an ordinary answer here rather than an error — the
+     * client already normalises the several ways the API says it to {@code null}
+     * (TBX_058) — so it is reported as plainly as a hit would be.
+     *
+     * @param args the command arguments, the first of which is the player to look
+     *             up by username or uuid
+     * @return the lines to report back to the caller
+     */
+    private String[] lookup(String[] args) {
+        if (!isConnected()) {
+            return singleLine(NOT_CONNECTED);
+        }
+        if (args.length < 1 || args[0].trim().isEmpty()) {
+            return singleLine("usage: /tebex lookup <player>");
+        }
+
+        String player = args[0].trim();
+        try {
+            PlayerLookupInfo found = txe.PluginApi()
+                    .getPlayerLookupInfo(key, player)
+                    .get(BLOCKING_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (found == null) {
+                return singleLine("The store holds nothing for " + player + ".");
+            }
+
+            PlayerLookupInfo.Player identity = found.getPlayer();
+            String name = identity == null || identity.getUsername() == null
+                    ? player
+                    : identity.getUsername();
+
+            List<String> out = new ArrayList<>();
+            out.add("Store details for " + name + ":");
+            if (identity != null && identity.getId() != null) {
+                out.add("  Store id: " + identity.getId());
+            }
+            out.add("  Bans: " + found.getBanCount());
+            out.add("  Chargeback rate: " + found.getChargebackRate() + "%");
+            out.add("  Payments: " + found.getPayments().size());
+            for (Map.Entry<String, Double> total : found.getPurchaseTotals().entrySet()) {
+                out.add("  Spent: " + total.getValue() + " " + total.getKey());
+            }
+            return out.toArray(new String[0]);
+        } catch (Exception failure) {
+            return singleLine("Could not look up " + player + ": " + rootMessage(failure));
+        }
+    }
+
+    /**
+     * Returns whether a secret key has been adopted, so a command that needs the
+     * store can refuse before it calls the API with nothing to authenticate with.
+     *
+     * @return {@code true} if this plugin holds a secret key
+     */
+    private boolean isConnected() {
+        return key != null && !key.trim().isEmpty();
+    }
+
+    /**
+     * Parses a package id argument.
+     *
+     * @param argument the raw argument as typed
+     * @return the package id, or {@code null} if it is not a number, which the
+     *         caller reports against the text the operator actually wrote
+     */
+    private static Integer parsePackageId(String argument) {
+        try {
+            return Integer.parseInt(argument.trim());
+        } catch (NumberFormatException notANumber) {
+            return null;
+        }
+    }
+
+    /**
      * Delivers the commands waiting for the calling player right now, rather than
      * making them wait for the next scheduled queue check (TBX_025).
      *
@@ -436,8 +666,8 @@ public class Plugin {
             out.add("the redeem command must be run by a player.");
             return out;
         }
-        if (key == null || key.trim().isEmpty()) {
-            out.add("this server is not connected to a store yet.");
+        if (!isConnected()) {
+            out.add(NOT_CONNECTED);
             return out;
         }
         if (serverCommand == null) {
@@ -489,8 +719,8 @@ public class Plugin {
      */
     private List<String> goals() {
         List<String> out = new ArrayList<>();
-        if (key == null || key.trim().isEmpty()) {
-            out.add("this server is not connected to a store yet.");
+        if (!isConnected()) {
+            out.add(NOT_CONNECTED);
             return out;
         }
 
@@ -721,6 +951,10 @@ public class Plugin {
             "  /tebex reload      - reload the configuration file",
             "  /tebex redeem      - deliver your waiting purchases now",
             "  /tebex goals       - show progress towards community goals",
+            "  /tebex checkout <package id> [username] - create a checkout link",
+            "  /tebex sendlink <username> <package id> - send a player a checkout link",
+            "  /tebex ban <player> [reason] - ban a player from the webstore",
+            "  /tebex lookup <player> - show what the store knows about a player",
             "  /tebex debug <true|false> - toggle debug logging",
             "  /tebex help        - show this message"));
         if (isBuyCommandEnabled()) {

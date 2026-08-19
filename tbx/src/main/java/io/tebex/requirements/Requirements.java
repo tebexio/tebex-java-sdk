@@ -92,6 +92,18 @@ public class Requirements {
         require("TBX_062", "deliverables are handed to the command hook one at a time and in the order the queue returned them: the next command is dispatched only after the hook call for the previous one has returned, so a purchase and the removal that follows it cannot be applied out of order");
         require("TBX_063", "a deliverable's player tags are resolved from the queue payload before it reaches the command hook, taking the id tags from the uuid, then from the xuid for a bedrock player who has none, and only then from the username");
 
+        // Operator commands over the plugin api endpoints the dispatcher reaches
+        // for (checkout, bans, user lookup). Registered per command rather than
+        // per endpoint because the endpoints themselves are already covered by
+        // TBX_051/057/058 — what these add is the operator-facing surface.
+        require("TBX_064", "a 'tebex checkout' command can be invoked to create a checkout link for a package, naming the customer so the console can run it too");
+        require("TBX_065", "a 'tebex sendlink' command can be invoked to send a package's checkout link to a named player, refusing before a link is created when it could not be delivered");
+        require("TBX_066", "a 'tebex ban' command can be invoked to ban a player from the webstore, reporting a refusal by the store as an outcome rather than a failure");
+        // Phrased without "record of" for the same reason CODE_006 avoids "class
+        // file": the CODE_003 Javadoc scanner reads a type keyword even inside a
+        // string literal, and "record" is one.
+        require("TBX_067", "a 'tebex lookup' command can be invoked to show what the store knows about a player, reporting plainly when the store holds nothing");
+
         require("CFG_001", "the /buy command name can be changed via configuration");
         require("CFG_002", "the /buy command can be disabled via configuration");
         require("CFG_003", "debug mode can be enabled/disabled via configuration");

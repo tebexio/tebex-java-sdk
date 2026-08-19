@@ -1,0 +1,76 @@
+# Runs the SDK's own verification gate on every push and pull request.
+#
+# `./gradlew build` is the whole gate, not just a compile: the requirement suite
+# in :tbx fails the build on an uncovered requirement or an untagged test
+# (TraceabilityTest), on a TODO/FIXME or missing Javadoc (CodeRequirementsTest),
+# on bytecode newer than major version 52 (BytecodeTargetTest), and on any
+# Minecraft package reaching :tbx (PlatformIndependenceTest). Those checks are
+# the reason this repository exists in the shape it does, so they must run
+# somewhere other than a maintainer's laptop.
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A new push to a branch makes the previous run's answer irrelevant.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gradle 9 needs a Java 17+ JVM to run on. This is only the JVM Gradle
+      # itself executes in — both modules pin a Java 8 *toolchain* (CODE_006),
+      # which is a separate JDK resolved below.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Deliberately does NOT install a JDK 8 alongside the above. README tells
+      # contributors no local JDK 8 is needed because the foojay toolchain
+      # resolver in settings.gradle.kts downloads one on demand; installing one
+      # here would mean CI stops exercising the documented path, and a broken
+      # resolver would only surface for whoever clones next.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The wrapper jar is committed (see .gitignore), so it is worth checking
+      # the one in the tree is a published Gradle release rather than trusting it.
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Build and verify
+        run: ./gradlew build --stacktrace
+
+      # The matrix is the human-readable form of the traceability gate: which
+      # requirements are covered, by which tests, and what is deferred and why.
+      # Published on success and failure alike — on a failure it is the fastest
+      # way to see which requirement lost its cover.
+      - name: Upload traceability matrix
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: traceability-matrix
+          path: tbx/build/reports/traceability-matrix.md
+          if-no-files-found: warn
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            tbx/build/reports/tests/
+            tbx/build/test-results/
+            headless-api/build/reports/tests/

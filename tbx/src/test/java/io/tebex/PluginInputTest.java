@@ -12,13 +12,18 @@ import io.tebex.hooks.Configuration;
 import io.tebex.hooks.PlayerActions;
 import io.tebex.http.PluginApi;
 import io.tebex.requirements.Requirement;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,8 +49,23 @@ class PluginInputTest {
             + "\"game_type\":\"Minecraft: Java Edition\",\"log_events\":false},"
             + "\"server\":{\"id\":2,\"name\":\"My Server\"}}";
 
+    private static final String CHECKOUT_JSON =
+            "{\"url\":\"https://checkout.tebex.io/checkout/abc123\",\"expires\":\"2026-01-01 00:00:00\"}";
+
+    private static final String LOOKUP_JSON =
+            "{\"player\":{\"id\":\"77\",\"username\":\"SomePlayer\",\"meta\":\"\","
+            + "\"plugin_username_id\":42},\"banCount\":2,\"chargebackRate\":3,"
+            + "\"payments\":[{\"txn_id\":\"tbx-1\",\"time\":1700000000,\"price\":10.5,"
+            + "\"currency\":\"USD\",\"status\":1}],\"purchaseTotals\":{\"USD\":10.5}}";
+
     private HttpServer server;
     private boolean debugModeBefore;
+
+    /** The last body the SDK sent to each stubbed path. */
+    private final Map<String, String> sentBodies = new ConcurrentHashMap<>();
+
+    /** How many times the SDK called each stubbed path. */
+    private final Map<String, AtomicInteger> callCounts = new ConcurrentHashMap<>();
 
     /**
      * The engine under test. Every test uses this one instance, and its
@@ -70,16 +90,29 @@ class PluginInputTest {
     }
 
     /**
-     * Starts a stub {@code /information} endpoint and points this test's engine at
-     * it.
+     * Stubs one plugin API path with a fixed answer, starting this test's server
+     * and pointing the engine at it on the first call.
      *
+     * <p>Records the request body and a call count per path, so a test can assert
+     * both what the SDK sent and — for the commands that must refuse before they
+     * call anything — that it sent nothing at all.
+     *
+     * @param path   the path to stub, matched by prefix as {@code HttpServer} does,
+     *               so {@code /user} also answers {@code /user/SomePlayer}
      * @param status the status to answer with
-     * @param body   the body to answer with
+     * @param body   the body to answer with, which must not be empty: a zero
+     *               length answer means chunked encoding to {@code HttpServer}
      * @throws IOException if the server cannot be started
      */
-    private void stubInformation(int status, String body) throws IOException {
-        server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-        server.createContext("/information", exchange -> {
+    private void stub(String path, int status, String body) throws IOException {
+        if (server == null) {
+            server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+            server.start();
+            txe.setPluginApi(new PluginApi("http://localhost:" + server.getAddress().getPort()));
+        }
+        server.createContext(path, exchange -> {
+            callCounts.computeIfAbsent(path, key -> new AtomicInteger()).incrementAndGet();
+            sentBodies.put(path, readFully(exchange.getRequestBody()));
             byte[] payload = body.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(status, payload.length);
             try (OutputStream out = exchange.getResponseBody()) {
@@ -87,8 +120,55 @@ class PluginInputTest {
             }
             exchange.close();
         });
-        server.start();
-        txe.setPluginApi(new PluginApi("http://localhost:" + server.getAddress().getPort()));
+    }
+
+    /**
+     * Stubs the {@code /information} endpoint every authenticating test needs.
+     *
+     * @param status the status to answer with
+     * @param body   the body to answer with
+     * @throws IOException if the server cannot be started
+     */
+    private void stubInformation(int status, String body) throws IOException {
+        stub("/information", status, body);
+    }
+
+    /**
+     * Returns the body the SDK sent to a stubbed path.
+     *
+     * @param path the stubbed path
+     * @return the request body, or the empty string if the path was never called
+     */
+    private String sentBody(String path) {
+        String body = sentBodies.get(path);
+        return body == null ? "" : body;
+    }
+
+    /**
+     * Returns how many times the SDK called a stubbed path.
+     *
+     * @param path the stubbed path
+     * @return the call count
+     */
+    private int callCount(String path) {
+        AtomicInteger count = callCounts.get(path);
+        return count == null ? 0 : count.get();
+    }
+
+    /**
+     * Reads a request body to a string.
+     *
+     * @param input the request body stream
+     * @return the body as UTF-8 text
+     * @throws IOException if the body cannot be read
+     */
+    private static String readFully(InputStream input) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        byte[] chunk = new byte[1024];
+        for (int read = input.read(chunk); read != -1; read = input.read(chunk)) {
+            buffer.write(chunk, 0, read);
+        }
+        return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
     }
 
     /** An in-memory {@link Configuration} that records what was written. */
@@ -156,6 +236,43 @@ class PluginInputTest {
     }
 
     /**
+     * A {@link PlayerActions} that records what was sent to a player and answers
+     * a fixed verdict for whether they are online.
+     */
+    private static final class RecordingPlayerActions implements PlayerActions {
+        final List<String> messages = new CopyOnWriteArrayList<>();
+        private final boolean online;
+
+        RecordingPlayerActions(boolean online) {
+            this.online = online;
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public boolean IsOnline(String usernameOrUuid) {
+            return online;
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public int GetNumInventorySlotsAvailable(String username) {
+            return 36;
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public void SendMessage(String username, String message) {
+            messages.add(username + ": " + message);
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public boolean HasPermission(String username, String uuid, String permission) {
+            return true;
+        }
+    }
+
+    /**
      * Returns this test's plugin, which belongs to {@link #txe}.
      *
      * @return the plugin under test
@@ -193,6 +310,11 @@ class PluginInputTest {
         assertTrue(help.contains("/tebex info"), "help must list the commands; got: " + help);
         assertTrue(help.contains("/tebex secret"), "help must list secret; got: " + help);
         assertTrue(help.contains("/tebex forcecheck"), "help must list forcecheck; got: " + help);
+        // A command that works but is not listed is only half delivered.
+        assertTrue(help.contains("/tebex checkout"), "help must list checkout; got: " + help);
+        assertTrue(help.contains("/tebex sendlink"), "help must list sendlink; got: " + help);
+        assertTrue(help.contains("/tebex ban"), "help must list ban; got: " + help);
+        assertTrue(help.contains("/tebex lookup"), "help must list lookup; got: " + help);
 
         // "tebex" with no subcommand previously returned a single empty line.
         assertEquals(help, joined(plugin.Input("tebex", "")),
@@ -466,5 +588,183 @@ class PluginInputTest {
         assertEquals(1, plugin.Input("/tebex nonsense", "").length,
                 "an unknown subcommand should produce exactly one line, got: "
                         + Arrays.toString(plugin.Input("/tebex nonsense", "")));
+    }
+
+    // ------------------------------------------------------------------
+    // Operator commands over the plugin api
+    // ------------------------------------------------------------------
+
+    @Test
+    @Requirement("TBX_064")
+    @DisplayName("TBX_064: 'tebex checkout' creates a link for the calling player")
+    void checkoutCreatesALinkForTheCallingPlayer() throws Exception {
+        stub("/checkout", 201, CHECKOUT_JSON);
+        Plugin plugin = newPlugin();
+        plugin.applyCredentials("valid-key", null, null);
+
+        String reply = joined(plugin.Input("/tebex checkout 123", "SomePlayer", "uuid-1"));
+
+        assertTrue(reply.contains("https://checkout.tebex.io/checkout/abc123"),
+                "the reply must carry the checkout url; got: " + reply);
+        assertTrue(sentBody("/checkout").contains("\"package_id\":123"),
+                "the package id must reach the api; sent: " + sentBody("/checkout"));
+        assertTrue(sentBody("/checkout").contains("\"username\":\"SomePlayer\""),
+                "the caller must be the customer when no name is given; sent: " + sentBody("/checkout"));
+    }
+
+    @Test
+    @Requirement("TBX_064")
+    @DisplayName("TBX_064: the console can create a link only by naming the customer")
+    void checkoutFromConsoleNamesTheCustomer() throws Exception {
+        stub("/checkout", 201, CHECKOUT_JSON);
+        Plugin plugin = newPlugin();
+        plugin.applyCredentials("valid-key", null, null);
+
+        // Nobody to infer: the store needs a customer for the basket.
+        String withoutName = joined(plugin.Input("/tebex checkout 123", ""));
+        assertTrue(withoutName.contains("must name the customer"), "got: " + withoutName);
+        assertEquals(0, callCount("/checkout"), "no basket should be created for a refused command");
+
+        String withName = joined(plugin.Input("/tebex checkout 123 SomePlayer", ""));
+        assertTrue(withName.contains("https://checkout.tebex.io/checkout/abc123"), "got: " + withName);
+        assertTrue(withName.contains("SomePlayer"), "the reply must say who the link is for; got: " + withName);
+        assertTrue(sentBody("/checkout").contains("\"username\":\"SomePlayer\""),
+                "the named customer must reach the api; sent: " + sentBody("/checkout"));
+    }
+
+    @Test
+    @Requirement("TBX_064")
+    @Requirement("TBX_060")
+    @DisplayName("TBX_064/TBX_060: checkout reports bad input and a missing store instead of calling out")
+    void checkoutRefusesBadInput() throws Exception {
+        stub("/checkout", 201, CHECKOUT_JSON);
+        Plugin plugin = newPlugin();
+
+        // No key adopted yet.
+        assertTrue(joined(plugin.Input("/tebex checkout 123", "SomePlayer", "uuid-1"))
+                .contains("not connected"));
+
+        plugin.applyCredentials("valid-key", null, null);
+        assertTrue(joined(plugin.Input("/tebex checkout", "SomePlayer", "uuid-1")).contains("usage"),
+                "checkout with no package id must report usage");
+        assertTrue(joined(plugin.Input("/tebex checkout twelve", "SomePlayer", "uuid-1"))
+                .contains("is not a package id"), "a non-numeric id must be reported, not parsed");
+        assertEquals(0, callCount("/checkout"), "none of these should have reached the api");
+    }
+
+    @Test
+    @Requirement("TBX_065")
+    @DisplayName("TBX_065: 'tebex sendlink' sends the checkout link to the named player")
+    void sendLinkDeliversTheLinkToThePlayer() throws Exception {
+        stub("/checkout", 201, CHECKOUT_JSON);
+        Plugin plugin = newPlugin();
+        plugin.applyCredentials("valid-key", null, null);
+        RecordingPlayerActions players = new RecordingPlayerActions(true);
+        plugin.HookPlayerActions(players);
+
+        String reply = joined(plugin.Input("/tebex sendlink SomePlayer 123", ""));
+
+        assertTrue(reply.contains("sent to SomePlayer"), "the operator must be told it was sent; got: " + reply);
+        assertEquals(1, players.messages.size(), "the player must be messaged; got: " + players.messages);
+        assertTrue(players.messages.get(0).contains("https://checkout.tebex.io/checkout/abc123"),
+                "the message must carry the link; got: " + players.messages);
+        assertTrue(players.messages.get(0).startsWith("SomePlayer:"),
+                "the link must go to the named player; got: " + players.messages);
+        assertTrue(sentBody("/checkout").contains("\"username\":\"SomePlayer\""),
+                "the basket must belong to the recipient; sent: " + sentBody("/checkout"));
+    }
+
+    @Test
+    @Requirement("TBX_065")
+    @Requirement("TBX_060")
+    @DisplayName("TBX_065/TBX_060: sendlink refuses before creating a link it could not deliver")
+    void sendLinkRefusesBeforeCreatingAnUndeliverableLink() throws Exception {
+        stub("/checkout", 201, CHECKOUT_JSON);
+        Plugin plugin = newPlugin();
+        plugin.applyCredentials("valid-key", null, null);
+
+        // No hook installed at all: there is no way to reach the player.
+        String noHook = joined(plugin.Input("/tebex sendlink SomePlayer 123", ""));
+        assertTrue(noHook.contains("no player actions hook"), "got: " + noHook);
+        assertTrue(noHook.contains("/tebex checkout 123 SomePlayer"),
+                "the refusal should point at the command that does work; got: " + noHook);
+
+        // Hook installed, but the recipient is not connected.
+        plugin.HookPlayerActions(new RecordingPlayerActions(false));
+        String offline = joined(plugin.Input("/tebex sendlink SomePlayer 123", ""));
+        assertTrue(offline.contains("not online"), "got: " + offline);
+
+        assertTrue(joined(plugin.Input("/tebex sendlink SomePlayer", "")).contains("usage"),
+                "sendlink without a package id must report usage");
+
+        // A basket created for a link nobody receives is worse than a refusal.
+        assertEquals(0, callCount("/checkout"), "no checkout should have been created");
+    }
+
+    @Test
+    @Requirement("TBX_066")
+    @DisplayName("TBX_066: 'tebex ban' bans the player and sends the whole reason")
+    void banSendsThePlayerAndWholeReason() throws Exception {
+        stub("/bans", 200, "{}");
+        Plugin plugin = newPlugin();
+        plugin.applyCredentials("valid-key", null, null);
+
+        String reply = joined(plugin.Input("/tebex ban Griefer chargeback fraud", ""));
+
+        assertTrue(reply.contains("was banned"), "got: " + reply);
+        assertTrue(sentBody("/bans").contains("\"user\":\"Griefer\""), "sent: " + sentBody("/bans"));
+        // A reason is a sentence, not a token: the rest of the line belongs to it.
+        assertTrue(sentBody("/bans").contains("\"reason\":\"chargeback fraud\""),
+                "the whole reason must be sent; sent: " + sentBody("/bans"));
+    }
+
+    @Test
+    @Requirement("TBX_066")
+    @DisplayName("TBX_066: a ban the store declines is reported as an outcome, not a failure")
+    void banReportsAStoreRefusal() throws Exception {
+        stub("/bans", 500, "{}");
+        Plugin plugin = newPlugin();
+        plugin.applyCredentials("valid-key", null, null);
+
+        String reply = assertDoesNotThrow(() -> joined(plugin.Input("/tebex ban Griefer", "")));
+
+        assertTrue(reply.contains("did not accept"), "the operator must learn the ban did not take; got: " + reply);
+        assertTrue(joined(plugin.Input("/tebex ban", "")).contains("usage"),
+                "ban with no player must report usage");
+    }
+
+    @Test
+    @Requirement("TBX_067")
+    @DisplayName("TBX_067: 'tebex lookup' shows the store's record of a player")
+    void lookupShowsTheStoreRecord() throws Exception {
+        stub("/user", 200, LOOKUP_JSON);
+        Plugin plugin = newPlugin();
+        plugin.applyCredentials("valid-key", null, null);
+
+        String reply = joined(plugin.Input("/tebex lookup SomePlayer", ""));
+
+        assertTrue(reply.contains("SomePlayer"), "got: " + reply);
+        assertTrue(reply.contains("Bans: 2"), "the ban count must be shown; got: " + reply);
+        assertTrue(reply.contains("3%"), "the chargeback rate must be shown; got: " + reply);
+        assertTrue(reply.contains("Payments: 1"), "the payment count must be shown; got: " + reply);
+        assertTrue(reply.contains("USD"), "the spend total must be shown; got: " + reply);
+    }
+
+    @Test
+    @Requirement("TBX_067")
+    @DisplayName("TBX_067: a player the store has no record of is reported plainly")
+    void lookupReportsAnUnknownPlayer() throws Exception {
+        // 404 is one of the three ways the api says "no such customer"; the client
+        // normalises all of them to null (TBX_058), and the command must not treat
+        // that ordinary answer as an error.
+        stub("/user", 404, "{}");
+        Plugin plugin = newPlugin();
+        plugin.applyCredentials("valid-key", null, null);
+
+        String reply = assertDoesNotThrow(() -> joined(plugin.Input("/tebex lookup Nobody", "")));
+
+        assertTrue(reply.contains("holds nothing for Nobody"), "got: " + reply);
+        assertTrue(joined(plugin.Input("/tebex lookup", "")).contains("usage"),
+                "lookup with no player must report usage");
     }
 }
