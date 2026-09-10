@@ -22,8 +22,9 @@ public interface ServerCommand {
      * Executes a command as the server console, returning once it has been
      * applied.
      *
-     * @param command the command line, without a leading slash and with the
-     *                player tags Tebex wrote into it already resolved
+     * @param command the command line as the host should parse it: never empty,
+     *                trimmed, without a leading slash, and with the player tags
+     *                Tebex wrote into it already resolved (TBX_068, TBX_063)
      */
     void Execute(String command);
 }

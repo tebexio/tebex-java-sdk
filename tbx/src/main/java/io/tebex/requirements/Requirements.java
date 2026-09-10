@@ -104,6 +104,8 @@ public class Requirements {
         // string literal, and "record" is one.
         require("TBX_067", "a 'tebex lookup' command can be invoked to show what the store knows about a player, reporting plainly when the store holds nothing");
 
+        require("TBX_068", "a deliverable is normalised into a line the host can parse before it reaches the command hook — trimmed, and with the leading slash a store may have saved removed — and one that is left with no command line at all is never dispatched, but is marked complete so the store stops returning it on every subsequent queue check");
+
         require("CFG_001", "the /buy command name can be changed via configuration");
         require("CFG_002", "the /buy command can be disabled via configuration");
         require("CFG_003", "debug mode can be enabled/disabled via configuration");

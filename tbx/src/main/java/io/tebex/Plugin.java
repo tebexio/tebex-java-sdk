@@ -1045,8 +1045,10 @@ public class Plugin {
      *
      * <p>Shared by the scheduled queue check and {@code /tebex redeem} so both
      * apply the same rules: a command already executed is not repeated (TBX_036),
-     * an offline player or one with no room for the item is skipped, and the task
-     * carries the command's delay (TBX_032) and its idempotency key.
+     * a command with no command line is retired without being dispatched
+     * (TBX_068), an offline player or one with no room for the item is skipped,
+     * and the task carries the command's delay (TBX_032) and its idempotency
+     * key.
      *
      * @param command the command to deliver
      * @return {@code true} if the command was queued
@@ -1054,6 +1056,17 @@ public class Plugin {
     private boolean queueCommand(QueuedCommand command) {
         if (executedCommands.containsKey(command.getId())) {
             return false; // do not re-queue commands already marked executed
+        }
+
+        // A deliverable that normalises to nothing is dropped here rather than
+        // handed to the host (TBX_068). Stores do queue these — a package whose
+        // command field was saved blank, or one whose only content was
+        // whitespace — and the host's dispatcher is not required to survive one:
+        // Bukkit's CraftServer.dispatchCommand splits the line on spaces and
+        // indexes element zero, so an empty line throws
+        // ArrayIndexOutOfBoundsException out of the tick that dispatched it.
+        if (normalizeCommand(command.getCommand()) == null) {
+            return dropEmptyCommand(command);
         }
 
         QueuedPlayer player = command.getPlayer();
@@ -1088,10 +1101,73 @@ public class Plugin {
         // would otherwise queue it again and the player would receive it once per
         // elapsed cycle. The queue owns that check, not this method.
         txe.queueMainThreadTask(new TebexTask(calculateDueAt(command), commandKey(command), () -> {
-            serverCommand.Execute(applyPlayerTags(command.getCommand(), command.getPlayer()));
+            // Normalised again after tag resolution, because this is the last
+            // point the SDK controls: whatever is passed here is what the host
+            // will try to parse (TBX_068).
+            String line = normalizeCommand(applyPlayerTags(command.getCommand(), command.getPlayer()));
+            if (line == null) {
+                dropEmptyCommand(command);
+                return;
+            }
+            serverCommand.Execute(line);
             executedCommands.put(command.getId(), command);
         }));
         return true;
+    }
+
+    /**
+     * Marks a deliverable that has nothing to run as executed, without ever
+     * dispatching it (TBX_068).
+     *
+     * <p>Acknowledging it is the half that stops the bug repeating. A command is
+     * only deleted from the store's queue once its id reaches
+     * {@code executedCommands}, so a blank command that is merely skipped is
+     * returned by the very next queue check, and every one after that, forever.
+     * That is what turned one unparseable command into a log full of identical
+     * stack traces. Recording it here retires it on the next delete instead.
+     *
+     * @param command the deliverable to retire undelivered
+     * @return {@code false}, so callers can return this directly: nothing was
+     *         queued for delivery
+     */
+    private boolean dropEmptyCommand(QueuedCommand command) {
+        TXE.Log().Warn("Not dispatching command #" + command.getId()
+                + ": the store queued it with an empty command line. Marking it complete so it is not sent again.");
+        executedCommands.put(command.getId(), command);
+        return false;
+    }
+
+    /**
+     * Returns a deliverable's command line in the form the command hook is
+     * promised: trimmed, without the leading slash a store may have saved with
+     * it, and {@code null} if nothing executable is left (TBX_068).
+     *
+     * <p>Both edits exist because the host parses the line by splitting it on
+     * spaces and looking up element zero. Padding makes that element the empty
+     * string, and a leading slash makes it {@code "/give"} rather than
+     * {@code "give"} — neither matches a registered command, so the delivery is
+     * silently swallowed as an unknown command. Stores hold plenty of commands
+     * saved the way an operator types them, slash and all.
+     *
+     * <p>Exactly one slash is removed, never every leading slash, because the
+     * second one can be part of the command's own name: WorldEdit registers
+     * {@code /set}, which an operator invokes by typing {@code //set}. Stripping
+     * both would turn that into {@code set} and lose the command.
+     *
+     * @param command the command line as the store queued it, tags already
+     *                resolved
+     * @return the line to hand the host, or {@code null} if there is nothing to
+     *         run
+     */
+    private static String normalizeCommand(String command) {
+        String line = trimToNull(command);
+        if (line == null) {
+            return null;
+        }
+
+        // A line of "/" alone leaves nothing behind and returns null here, which
+        // is the correct outcome: it names no command.
+        return line.charAt(0) == '/' ? trimToNull(line.substring(1)) : line;
     }
 
     /**
