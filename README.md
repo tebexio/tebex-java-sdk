@@ -70,6 +70,51 @@ dependencies {
 Gradle substitutes the coordinate with the included build's `:tbx` project, so the
 submodule is built from source rather than resolved from a repository.
 
+## Publishing to Maven Central
+
+Both `io.tebex:tbx` and `io.tebex:headless-api` are published (a consumer that
+resolves `tbx` from Maven Central rather than via the submodule/`includeBuild`
+path above needs `headless-api` too, since `tbx` re-exports it). Publishing is
+configured with the [Vanniktech Maven Publish plugin](https://vanniktech.github.io/gradle-maven-publish-plugin/)
+in the root `build.gradle.kts`, targeting Sonatype's [Central Portal](https://central.sonatype.com/).
+
+One-time account setup (not part of this repository):
+
+1. A [Central Portal](https://central.sonatype.com/) account with the `io.tebex`
+   namespace verified (proven via a DNS TXT record on `tebex.io`).
+2. A dedicated PGP key pair for release signing, with the public key published
+   to a keyserver (e.g. `keyserver.ubuntu.com`).
+3. A Central Portal user token (Account → Generate User Token) — not your
+   account password.
+
+To publish from a maintainer's machine, add to `~/.gradle/gradle.properties`
+(never to this repository):
+
+```properties
+mavenCentralUsername=<user token username>
+mavenCentralPassword=<user token password>
+signing.keyId=<last 8 chars of the key id>
+signing.password=<key passphrase>
+signing.secretKeyRingFile=<path to a secring.gpg exported from the key>
+```
+
+then bump `version` in `tbx/build.gradle.kts` and `headless-api/build.gradle.kts`
+together and run:
+
+```bash
+./gradlew publishToMavenCentral   # stages the deployment for review at central.sonatype.com
+./gradlew publishAndReleaseToMavenCentral   # stages and releases in one step
+```
+
+The same thing runs from CI via the [`release` workflow](.github/workflows/release.yml)
+(reading the equivalent credentials from repository secrets instead), which
+fires automatically on every push to `main` — so a merged version-bump PR is
+enough to stage a new deployment — and can also be run on demand from the
+Actions tab. Either way it only stages the deployment; a release, once
+published, can never be deleted, so someone still has to review it and click
+Publish at central.sonatype.com, or re-run the workflow manually with
+"automaticRelease" checked to do both steps at once.
+
 ## License
 
 See [LICENSE](LICENSE).

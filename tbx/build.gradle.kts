@@ -60,3 +60,16 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 }
+
+// Maven Central coordinates/signing/license/scm are configured once for every
+// module in the root build.gradle.kts; this is just the per-module POM identity.
+extensions.configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
+    pom {
+        name.set("Tebex Java SDK")
+        description.set(
+            "Platform-agnostic Java SDK for the Tebex merchant-of-record platform: " +
+                "store/package models, the plugin API client, the command queue and " +
+                "the platform hook interfaces."
+        )
+    }
+}

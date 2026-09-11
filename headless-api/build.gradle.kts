@@ -53,3 +53,26 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 }
+
+// The generated sources use non-standard doc tags (e.g. `@http.response.details`,
+// emitted by the OpenAPI generator's okhttp-gson templates) that javadoc's doclint
+// rejects as "unknown tag" errors under its default strict mode, which would
+// otherwise fail the javadocJar Maven Central requires. Disabling doclint is safe
+// here specifically because these sources are machine-generated, not hand-written
+// (CODE_00x hand-written-doc requirements are enforced on :tbx, not this module).
+tasks.withType<Javadoc>().configureEach {
+    (options as StandardJavadocDocletOptions).addStringOption("Xdoclint:none", "-quiet")
+}
+
+// Maven Central coordinates/signing/license/scm are configured once for every
+// module in the root build.gradle.kts; this is just the per-module POM identity.
+extensions.configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
+    pom {
+        name.set("Tebex Headless API Client")
+        description.set(
+            "Generated Java client for the Tebex Headless API " +
+                "(https://docs.tebex.io/developers/headless-api/overview), consumed by " +
+                "io.tebex:tbx."
+        )
+    }
+}
