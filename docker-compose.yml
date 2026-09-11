@@ -41,4 +41,4 @@ services:
       # (JSR-305, from com.google.code.findbugs:jsr305) and javax.annotation.
       # Generated (present in the Java 8 JDK). The jakarta.annotation-api artifact
       # does NOT contain Nonnull/Nullable, so useJakartaEe=true fails to compile.
-      - --additional-properties=serializationLibrary=gson,dateLibrary=java8,hideGenerationTimestamp=true,useJakartaEe=false,openApiNullable=false,invokerPackage=io.tebex.headless.invoker,apiPackage=io.tebex.headless.api,modelPackage=io.tebex.headless.model,groupId=io.tebex,artifactId=headless-api,artifactVersion=3.0.0
+      - --additional-properties=serializationLibrary=gson,dateLibrary=java8,hideGenerationTimestamp=true,useJakartaEe=false,openApiNullable=false,invokerPackage=io.tebex.headless.invoker,apiPackage=io.tebex.headless.api,modelPackage=io.tebex.headless.model,groupId=io.tebex,artifactId=headless-api,artifactVersion=0.0.1

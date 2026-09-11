@@ -63,7 +63,7 @@ includeBuild("tebex-java-sdk")
 ```kotlin
 // build.gradle.kts of the consuming module
 dependencies {
-    implementation("io.tebex:tbx:3.0.0")
+    implementation("io.tebex:tbx:0.0.1")
 }
 ```
 

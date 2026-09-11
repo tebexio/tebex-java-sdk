@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "io.tebex"
-version = "3.0.0"
+version = "0.0.1"
 
 // tbx targets Java 8 (CODE_006). Every consuming platform module must be able to
 // use this SDK, and the oldest of them (the Tebex-Minecraft bukkit and bungeecord
