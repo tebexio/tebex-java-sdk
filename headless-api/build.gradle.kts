@@ -6,8 +6,11 @@
 // .openapi-generator-ignore next to it, are the only hand-written files in the
 // module (the generator is told to skip them).
 //
-// Other modules consume the SDK with:
-//     implementation(project(":headless-api"))
+// This module is never published to Maven Central on its own (io.tebex:tbx is
+// the only public artifact) — it exists purely as the OpenAPI generator's own
+// isolated output directory. :tbx compiles against it with `compileOnly` and
+// physically merges its compiled classes into tbx's own jar; see the
+// `evaluationDependsOn`/`tasks.jar` block in tbx/build.gradle.kts.
 //
 // Java 8 toolchain so EVERY consumer can depend on it, transitively through :tbx:
 // that includes the oldest Tebex-Minecraft platform plugins (bukkit, bungeecord),
@@ -56,23 +59,11 @@ tasks.test {
 
 // The generated sources use non-standard doc tags (e.g. `@http.response.details`,
 // emitted by the OpenAPI generator's okhttp-gson templates) that javadoc's doclint
-// rejects as "unknown tag" errors under its default strict mode, which would
-// otherwise fail the javadocJar Maven Central requires. Disabling doclint is safe
+// rejects as "unknown tag" errors under its default strict mode. This module isn't
+// published, so nothing requires its javadoc to build, but disabling doclint keeps
+// `./gradlew :headless-api:javadoc` usable for local inspection regardless — safe
 // here specifically because these sources are machine-generated, not hand-written
 // (CODE_00x hand-written-doc requirements are enforced on :tbx, not this module).
 tasks.withType<Javadoc>().configureEach {
     (options as StandardJavadocDocletOptions).addStringOption("Xdoclint:none", "-quiet")
-}
-
-// Maven Central coordinates/signing/license/scm are configured once for every
-// module in the root build.gradle.kts; this is just the per-module POM identity.
-extensions.configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
-    pom {
-        name.set("Tebex Headless API Client")
-        description.set(
-            "Generated Java client for the Tebex Headless API " +
-                "(https://docs.tebex.io/developers/headless-api/overview), consumed by " +
-                "io.tebex:tbx."
-        )
-    }
 }

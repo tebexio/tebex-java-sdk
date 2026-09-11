@@ -9,11 +9,14 @@ This repository is primarily consumed by [Tebex-Minecraft](https://github.com/te
 
 | Module | Description |
 | --- | --- |
-| `tbx` | The hand-written SDK: store/package models, the plugin API client, the command queue and the platform hook interfaces. Contains **no** Minecraft (or any other game) types. |
-| `headless-api` | The [Headless API](https://docs.tebex.io/developers/headless-api/overview) client, generated from `apis/headless-api.yaml` by the OpenAPI generator. Do not edit its sources by hand. |
+| `tbx` | The **published** SDK: store/package models, the plugin API client, the command queue and the platform hook interfaces, hand-written and containing **no** Minecraft (or any other game) types — plus the generated Headless client, physically merged into `tbx`'s own jar (see below). |
+| `headless-api` | The [Headless API](https://docs.tebex.io/developers/headless-api/overview) client, generated from `apis/headless-api.yaml` by the OpenAPI generator. Do not edit its sources by hand. Internal only — never published on its own; exists solely as the generator's isolated output directory. |
 
-`tbx` re-exports `headless-api` with Gradle's `api` configuration, so a consumer that
-depends on `tbx` alone gets the generated Headless types on its compile classpath.
+`headless-api` is not a dependency of `tbx` in the usual sense: `tbx/build.gradle.kts`
+compiles against it with `compileOnly` and then merges its compiled classes directly
+into `tbx`'s own jar and sources jar, so `io.tebex:tbx` is a single, self-contained
+artifact — a consumer needs nothing named `headless-api` on their classpath at all,
+just `tbx` and its ordinary third-party dependencies (okhttp, gson, ...).
 
 ## Building
 
@@ -72,11 +75,11 @@ submodule is built from source rather than resolved from a repository.
 
 ## Publishing to Maven Central
 
-Both `io.tebex:tbx` and `io.tebex:headless-api` are published (a consumer that
-resolves `tbx` from Maven Central rather than via the submodule/`includeBuild`
-path above needs `headless-api` too, since `tbx` re-exports it). Publishing is
-configured with the [Vanniktech Maven Publish plugin](https://vanniktech.github.io/gradle-maven-publish-plugin/)
-in the root `build.gradle.kts`, targeting Sonatype's [Central Portal](https://central.sonatype.com/).
+Only `io.tebex:tbx` is published — `headless-api` is never published on its own
+(see [Modules](#modules) above); `tbx` embeds it. Publishing is configured with the
+[Vanniktech Maven Publish plugin](https://vanniktech.github.io/gradle-maven-publish-plugin/)
+in the root `build.gradle.kts`, applied only to `:tbx`, targeting Sonatype's
+[Central Portal](https://central.sonatype.com/).
 
 One-time account setup (not part of this repository):
 
@@ -98,8 +101,10 @@ signing.password=<key passphrase>
 signing.secretKeyRingFile=<path to a secring.gpg exported from the key>
 ```
 
-then bump `version` in `tbx/build.gradle.kts` and `headless-api/build.gradle.kts`
-together and run:
+then bump `version` in `tbx/build.gradle.kts` (and, for consistency, the same
+value in `headless-api/build.gradle.kts` and `artifactVersion` in
+`docker-compose.yml` — neither is published, but both feed into `tbx`'s
+embedded classes/User-Agent string) and run:
 
 ```bash
 ./gradlew publishToMavenCentral   # stages the deployment for review at central.sonatype.com

@@ -1,9 +1,10 @@
 // Shared Maven Central publishing setup.
 //
-// Both :tbx and :headless-api are published, not just :tbx: a consumer that
-// resolves io.tebex:tbx from Maven Central (rather than via the includeBuild
-// submodule path described in the README) needs io.tebex:headless-api to
-// resolve too, since tbx re-exports it with the `api` configuration.
+// Only :tbx is published. :headless-api is an internal implementation detail —
+// the OpenAPI generator's own isolated output directory (see
+// docker-compose.yml) — never published as io.tebex:headless-api; :tbx embeds
+// its compiled classes directly into tbx's own jar (see tbx/build.gradle.kts)
+// so io.tebex:tbx is a self-contained, all-in-one artifact.
 //
 // Credentials and the signing key are never stored in this repository. Supply
 // them as environment variables (e.g. in CI):
@@ -23,7 +24,7 @@ plugins {
     id("com.vanniktech.maven.publish") version "0.37.0" apply false
 }
 
-subprojects {
+configure(listOf(project(":tbx"))) {
     apply(plugin = "com.vanniktech.maven.publish")
 
     extensions.configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
