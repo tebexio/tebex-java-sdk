@@ -74,3 +74,4 @@ jobs:
             tbx/build/reports/tests/
             tbx/build/test-results/
             headless-api/build/reports/tests/
+            checkout-api/build/reports/tests/
