@@ -26,27 +26,33 @@ repositories {
     mavenCentral()
 }
 
-// :headless-api is not published to Maven Central on its own — io.tebex:tbx is
-// the only public artifact, and it physically embeds :headless-api's compiled
-// classes (see tasks.jar below). That reference needs :headless-api already
-// configured, since sourceSets.main is read from it below at configuration time.
+// :headless-api and :checkout-api are not published to Maven Central on their
+// own — io.tebex:tbx is the only public artifact, and it physically embeds
+// both modules' compiled classes (see tasks.jar below). Those references need
+// the modules already configured, since sourceSets.main is read from them
+// below at configuration time.
 evaluationDependsOn(":headless-api")
+evaluationDependsOn(":checkout-api")
 
 dependencies {
-    // :headless-api (see docker-compose.yml, service `sdk-generator`) is
-    // compiled against here and merged straight into tbx's own jar/sourcesJar
-    // (tasks.jar / tasks.sourcesJar below) — `compileOnly`, not `api`, so the
-    // dependency never reaches tbx's published POM. io.tebex:headless-api is
-    // not itself published, so a real dependency edge to it would leave
-    // anyone resolving io.tebex:tbx from Maven Central with an unresolvable
-    // dependency; embedding the classes makes tbx a genuine all-in-one jar.
+    // :headless-api and :checkout-api (see docker-compose.yml, services
+    // `headless-api-generator`/`checkout-api-generator`) are compiled against
+    // here and merged straight into tbx's own jar/sourcesJar (tasks.jar /
+    // tasks.sourcesJar below) — `compileOnly`, not `api`, so the dependency
+    // never reaches tbx's published POM. Neither io.tebex:headless-api nor
+    // io.tebex:checkout-api is itself published, so a real dependency edge to
+    // them would leave anyone resolving io.tebex:tbx from Maven Central with
+    // an unresolvable dependency; embedding the classes makes tbx a genuine
+    // all-in-one jar.
     compileOnly(project(":headless-api"))
     testImplementation(project(":headless-api"))
+    compileOnly(project(":checkout-api"))
+    testImplementation(project(":checkout-api"))
 
-    // :headless-api's own runtime dependencies stay regular, separately
-    // resolvable Maven dependencies here rather than being embedded —
-    // embedding third-party libraries would risk classpath conflicts for
-    // consumers who already use okhttp/gson themselves.
+    // :headless-api and :checkout-api's own runtime dependencies stay regular,
+    // separately resolvable Maven dependencies here rather than being
+    // embedded — embedding third-party libraries would risk classpath
+    // conflicts for consumers who already use okhttp/gson themselves.
     //
     // `api`, not `implementation`: io.tebex.http.HeadlessApi exposes generated
     // types built on these (e.g. an OkHttpClient) as public fields (`Headless`,
@@ -56,7 +62,9 @@ dependencies {
     // and that call did not compile in consuming modules. This was decided
     // deliberately (the "G3" decision in the Tebex-Minecraft changelog,
     // recorded there before this SDK was extracted into its own repository):
-    // the generated Headless types ARE part of tbx's public surface.
+    // the generated Headless types ARE part of tbx's public surface. The
+    // generated Checkout types share the same dependency set, so no
+    // additional coordinates are needed here.
     api("com.squareup.okhttp3:okhttp:4.12.0")
     api("com.squareup.okhttp3:logging-interceptor:4.12.0")
     api("io.gsonfire:gson-fire:1.9.0")
@@ -80,14 +88,17 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// Physically merges :headless-api's compiled classes/sources into tbx's own
-// jar/sourcesJar, so io.tebex:tbx is a genuine all-in-one artifact: a consumer
-// resolving it from Maven Central needs nothing else on the classpath besides
-// the regular third-party dependencies declared above. No relocation is
-// needed — :headless-api lives entirely under the io.tebex.headless package,
-// which tbx's own hand-written sources never use for their own classes.
+// Physically merges :headless-api's and :checkout-api's compiled
+// classes/sources into tbx's own jar/sourcesJar, so io.tebex:tbx is a genuine
+// all-in-one artifact: a consumer resolving it from Maven Central needs
+// nothing else on the classpath besides the regular third-party dependencies
+// declared above. No relocation is needed — :headless-api and :checkout-api
+// live entirely under the io.tebex.headless and io.tebex.checkout packages
+// respectively, which tbx's own hand-written sources never use for their own
+// classes.
 tasks.jar {
     from(project(":headless-api").sourceSets.main.get().output)
+    from(project(":checkout-api").sourceSets.main.get().output)
 }
 
 // `sourcesJar` is created lazily by the maven-publish plugin (via
@@ -98,6 +109,7 @@ tasks.jar {
 tasks.withType<Jar>().configureEach {
     if (name == "sourcesJar") {
         from(project(":headless-api").sourceSets.main.get().allJava)
+        from(project(":checkout-api").sourceSets.main.get().allJava)
     }
 }
 
@@ -109,7 +121,8 @@ extensions.configure<com.vanniktech.maven.publish.MavenPublishBaseExtension> {
         description.set(
             "Platform-agnostic, all-in-one Java SDK for the Tebex merchant-of-record " +
                 "platform: store/package models, the plugin API client, the generated " +
-                "Headless API client, the command queue and the platform hook interfaces."
+                "Headless API and Checkout API clients, the command queue and the " +
+                "platform hook interfaces."
         )
     }
 }

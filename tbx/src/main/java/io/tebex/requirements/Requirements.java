@@ -106,6 +106,15 @@ public class Requirements {
 
         require("TBX_068", "a deliverable is normalised into a line the host can parse before it reaches the command hook — trimmed, and with the leading slash a store may have saved removed — and one that is left with no command line at all is never dispatched, but is marked complete so the store stops returning it on every subsequent queue check");
 
+        // Checkout API client behaviour, mirroring the Headless API client
+        // coverage above (TBX_014/015/016/042) one requirement per endpoint
+        // group exposed on the CheckoutApi facade.
+        require("TBX_069", "a basket can be fetched by its identifier via the checkout api");
+        require("TBX_070", "a checkout request can be created via the checkout api in a single call, returning a basket with a checkout link");
+        require("TBX_071", "a payment can be fetched by its transaction id via the checkout api");
+        require("TBX_072", "a recurring payment (subscription) can be fetched by its reference via the checkout api");
+        require("TBX_073", "the checkout api authenticates requests with http basic credentials bound via setCredentials");
+
         require("CFG_001", "the /buy command name can be changed via configuration");
         require("CFG_002", "the /buy command can be disabled via configuration");
         require("CFG_003", "debug mode can be enabled/disabled via configuration");

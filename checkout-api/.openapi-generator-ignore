@@ -1,0 +1,30 @@
+# openapi-generator ignore file.
+#
+# This module is a Gradle subproject of the Tebex Minecraft build. We supply our
+# own Kotlin-DSL build.gradle.kts (matching the rest of the repo) and let the
+# generator emit ONLY the Java sources. Everything below is scaffolding the
+# generator would otherwise create that conflicts with, or is redundant to, the
+# parent Gradle build.
+
+# Build tooling — the parent build owns this.
+build.gradle
+build.sbt
+settings.gradle
+pom.xml
+gradle.properties
+gradlew
+gradlew.bat
+gradle/
+.gitignore
+git_push.sh
+.travis.yml
+.github/
+
+# Docs the generator writes at the module root; keep the tree to just sources.
+README.md
+docs/
+api/
+
+# Android scaffolding the java generator emits under src/main; this is a plain
+# JVM Gradle module, so we don't want it.
+src/main/AndroidManifest.xml
