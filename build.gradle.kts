@@ -39,9 +39,9 @@ configure(listOf(project(":tbx"))) {
 
             licenses {
                 license {
-                    name.set("GNU General Public License v3.0")
-                    url.set("https://www.gnu.org/licenses/gpl-3.0.html")
-                    distribution.set("https://www.gnu.org/licenses/gpl-3.0.html")
+                    name.set("MIT License")
+                    url.set("https://opensource.org/license/mit")
+                    distribution.set("https://opensource.org/license/mit")
                 }
             }
 

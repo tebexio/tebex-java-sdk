@@ -2,7 +2,7 @@
 # published module — :headless-api and :checkout-api are embedded into tbx's
 # own jar (see tbx/build.gradle.kts), never published on their own.
 #
-# Runs when a `v*` tag is pushed (e.g. `v0.0.1`, which must match the `version`
+# Runs when a `v*` tag is pushed (e.g. `v1.0.0`, which must match the `version`
 # in tbx/build.gradle.kts) — as well as on-demand from the Actions tab. It does
 # NOT run on ordinary pushes to main: Central rejects a version that already
 # exists, so a push-triggered release would fail on every merge that did not
