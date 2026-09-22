@@ -1,51 +1,38 @@
 # Tebex Java SDK
 
-The platform-agnostic Java SDK for [Tebex](https://tebex.io) - the merchant-of-record
-platform that lets server administrators run a store for their game servers.
+The platform-agnostic Java SDK for [Tebex](https://tebex.io) - the merchant-of-record platform that lets server administrators run a store for their game servers.
 
-This repository is primarily consumed by [Tebex-Minecraft](https://github.com/tebexio/Tebex-Minecraft) as a git submodule, and is intended to be reusable by any JVM integration.
+This contains mappings for various Tebex APIs: **Checkout**, **Headless**, and **Plugin**, to allow integration in a wide variety of situations.  
+
+See [Tebex-Minecraft](https://github.com/tebexio/Tebex-Minecraft) for its use in a game server plugin. It is intended to be reusable by any JVM integration.
 
 ## Modules
 
 | Module | Description |
 | --- | --- |
-| `tbx` | The hand-written SDK: store/package models, the plugin API client, the command queue and the platform hook interfaces. Contains **no** Minecraft (or any other game) types. |
-| `headless-api` | The [Headless API](https://docs.tebex.io/developers/headless-api/overview) client, generated from `apis/headless-api.yaml` by the OpenAPI generator. Do not edit its sources by hand. |
+| `tbx` | The **published** SDK: store/package models, the plugin API client, the command queue and the platform hook interfaces, hand-written and containing **no** Minecraft (or any other game) types — plus the generated Headless and Checkout clients, physically merged into `tbx`'s own jar (see below). |
+| `headless-api` | The [Headless API](https://docs.tebex.io/developers/headless-api/overview) client, generated from `apis/headless-api.yaml` by the OpenAPI generator. Do not edit its sources by hand. Internal only — never published on its own; exists solely as the generator's isolated output directory. |
+| `checkout-api` | The [Checkout API](https://docs.tebex.io/developers/checkout-api/overview) client, generated from `apis/checkout-api.yaml` by the OpenAPI generator. Do not edit its sources by hand. Internal only — never published on its own; exists solely as the generator's isolated output directory. |
 
-`tbx` re-exports `headless-api` with Gradle's `api` configuration, so a consumer that
-depends on `tbx` alone gets the generated Headless types on its compile classpath.
+Neither `headless-api` nor `checkout-api` is a dependency of `tbx` in the usual sense: `tbx/build.gradle.kts` compiles against 
+them with `compileOnly` and then merges their compiled classes directly into `tbx`'s own jar and sources jar, so `io.tebex:tbx` 
+is a single, self-contained artifact — a consumer needs nothing named `headless-api` or `checkout-api` on their classpath at all, just `tbx` and its ordinary third-party dependencies (okhttp, gson, ...).
 
 ## Building
 
 ```bash
-./gradlew build     # compile both modules
+./gradlew build     # compile all three modules
 ./gradlew test      # run the requirement suite
 ```
 
-Both modules target **Java 8** bytecode, so that even the oldest game-server platforms
-can consume them. No local JDK 8 install is needed — the
-[foojay toolchain resolver](https://github.com/gradle/foojay-toolchains) configured in
-`settings.gradle.kts` downloads one on demand.
+## Regenerating the generated API clients
 
-## Regenerating the Headless API client
-
-The `headless-api` sources are generated from the OpenAPI contract, which is the
-source of truth for every Headless operation and schema:
+The `headless-api` and `checkout-api` sources are each generated from their OpenAPI contract, which is the source of truth for every operation and schema:
 
 ```bash
-docker compose run --rm sdk-generator
+docker compose run --rm headless-api-generator
+docker compose run --rm checkout-api-generator
 ```
-
-This rewrites `headless-api/src` from `apis/headless-api.yaml`. The hand-written
-`headless-api/build.gradle.kts` and `.openapi-generator-ignore` are preserved — see
-that ignore file for the full skip list.
-
-## Testing approach
-
-The suite is requirements-based: every test carries an `@Requirement("ID")` tag and
-`TraceabilityTest` fails the build on any requirement without a covering test, or any
-test without a requirement. `CodeRequirementsTest` and `BytecodeTargetTest` enforce
-source hygiene (`CODE_001`–`CODE_005`) and the Java 8 target (`CODE_006`).
 
 ## Consuming as a submodule
 
@@ -63,12 +50,11 @@ includeBuild("tebex-java-sdk")
 ```kotlin
 // build.gradle.kts of the consuming module
 dependencies {
-    implementation("io.tebex:tbx:3.0.0")
+    implementation("io.tebex:tbx:1.0.0")
 }
 ```
 
-Gradle substitutes the coordinate with the included build's `:tbx` project, so the
-submodule is built from source rather than resolved from a repository.
+Gradle substitutes the coordinate with the included build's `:tbx` project, so the submodule is built from source rather than resolved from a repository.
 
 ## License
 

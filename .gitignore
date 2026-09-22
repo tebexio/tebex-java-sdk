@@ -4,6 +4,7 @@ build/
 **/build
 **/*.iml
 **/*.jar
+*.asc
 # Must stay AFTER the **/*.jar rule above, or the Gradle wrapper jar is never
 # committed and a fresh clone cannot build.
 !gradle/wrapper/**

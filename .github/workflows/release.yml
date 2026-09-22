@@ -1,0 +1,94 @@
+# Publishes :tbx to Maven Central via the Central Portal. It is the only
+# published module — :headless-api and :checkout-api are embedded into tbx's
+# own jar (see tbx/build.gradle.kts), never published on their own.
+#
+# Runs when a `v*` tag is pushed (e.g. `v1.0.0`, which must match the `version`
+# in tbx/build.gradle.kts) — as well as on-demand from the Actions tab. It does
+# NOT run on ordinary pushes to main: Central rejects a version that already
+# exists, so a push-triggered release would fail on every merge that did not
+# also bump the version.
+#
+# Either way the full verification gate (`./gradlew build`, the same one the
+# build workflow runs) must pass before anything is uploaded, and it only ever
+# stages the deployment (`publishToMavenCentral`, not
+# `publishAndReleaseToMavenCentral`): a Central Portal deployment can be released
+# but never un-released, so a tag push should not be able to make a mistake
+# permanent by itself. Someone still has to review and click Publish on the
+# staged deployment at central.sonatype.com — or run this workflow manually
+# with the "automaticRelease" input checked, which does both steps at once.
+#
+# Requires these repository secrets (see build.gradle.kts and
+# https://vanniktech.github.io/gradle-maven-publish-plugin/central/):
+#   MAVEN_CENTRAL_USERNAME / MAVEN_CENTRAL_PASSWORD — a Central Portal user
+#     token (Account -> Generate User Token), not a Sonatype account password.
+#   SIGNING_IN_MEMORY_KEY / SIGNING_IN_MEMORY_KEY_ID / SIGNING_IN_MEMORY_KEY_PASSWORD
+#     — an ASCII-armored PGP private key (and its id/passphrase) whose public
+#     key has been published to a keyserver, dedicated to release signing.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      automaticRelease:
+        description: >-
+          Publish straight to Maven Central (publishAndReleaseToMavenCentral).
+          Leave unchecked to stage the deployment and release it by hand from
+          central.sonatype.com after reviewing it there. Ignored on a tag
+          push, which always stages only.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # A tag that disagrees with the built version would stage a deployment
+      # under a version the tag does not describe.
+      - name: Check tag matches project version
+        if: ${{ github.ref_type == 'tag' }}
+        run: |
+          version="$(./gradlew -q :tbx:properties | sed -n 's/^version: //p')"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match tbx version ${version} (expected v${version})"
+            exit 1
+          fi
+
+      # The whole gate, not just a compile — see build.yml for what it enforces.
+      - name: Build and verify
+        run: ./gradlew build --stacktrace
+
+      - name: Publish (staged)
+        if: ${{ github.event_name == 'push' || !inputs.automaticRelease }}
+        run: ./gradlew publishToMavenCentral --stacktrace
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
+
+      - name: Publish and release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.automaticRelease }}
+        run: ./gradlew publishAndReleaseToMavenCentral --stacktrace
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
