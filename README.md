@@ -34,6 +34,18 @@ docker compose run --rm headless-api-generator
 docker compose run --rm checkout-api-generator
 ```
 
+## Using with Maven
+
+`io.tebex:tbx` is published on Maven Central, so no extra repository declaration is needed:
+
+```xml
+<dependency>
+    <groupId>io.tebex</groupId>
+    <artifactId>tbx</artifactId>
+    <version>1.0.0</version>
+</dependency>
+```
+
 ## Consuming as a submodule
 
 ```bash
