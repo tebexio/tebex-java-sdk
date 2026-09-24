@@ -11,3 +11,5 @@ build/
 .DS_Store
 **/.DS_Store# Local build script; holds live integration test credentials.
 local_build.sh
+.claude/# Local Claude Code configuration and skills.
+.claude/
