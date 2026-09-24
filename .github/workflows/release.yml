@@ -8,7 +8,14 @@
 # exists, so a push-triggered release would fail on every merge that did not
 # also bump the version.
 #
-# Either way the full verification gate (`./gradlew build`, the same one the
+# Either way, the commit being released must already have a successful run of
+# the build workflow from a push to main. That is the run with the live
+# integration test secrets, so a release never ships a commit whose live
+# Headless/Checkout tests failed, or one that never reached main. This
+# workflow does not re-run the live tests itself: Tebex being briefly
+# unreachable should not block a release of an already-verified commit.
+#
+# The full verification gate (`./gradlew build`, the same one the
 # build workflow runs) must pass before anything is uploaded, and it only ever
 # stages the deployment (`publishToMavenCentral`, not
 # `publishAndReleaseToMavenCentral`): a Central Portal deployment can be released
@@ -42,11 +49,41 @@ on:
 
 permissions:
   contents: read
+  # Read the build workflow's runs for the commit being released.
+  actions: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # Fails fast, before anything is built. If the build run for this commit
+      # is still in progress (the tag was pushed right after the commit), waits
+      # for it rather than failing. A failed run that was later re-run
+      # successfully counts, since a re-run updates the same run.
+      - name: Require a green build workflow run on main for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          run="$(gh run list --workflow build.yml --commit "$GITHUB_SHA" --branch main --event push \
+            --limit 1 --json databaseId,status,conclusion,url \
+            --jq '.[0] // empty | "\(.databaseId) \(.status) \(.conclusion | if . == null or . == "" then "none" else . end) \(.url)"')"
+          if [ -z "$run" ]; then
+            echo "::error::No build workflow run from a push to main exists for ${GITHUB_SHA}. Push the commit to main and let the build workflow pass before releasing it."
+            exit 1
+          fi
+          read -r id status conclusion url <<< "$run"
+          if [ "$status" != "completed" ]; then
+            echo "Build run $url is $status; waiting for it to finish."
+            gh run watch "$id" --exit-status > /dev/null || true
+            conclusion="$(gh run view "$id" --json conclusion --jq .conclusion)"
+          fi
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::The build workflow run for ${GITHUB_SHA} on main concluded '${conclusion}': $url"
+            exit 1
+          fi
+          echo "Build workflow passed for ${GITHUB_SHA}: $url"
+
       - uses: actions/checkout@v4
 
       - name: Set up JDK 21

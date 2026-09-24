@@ -30,6 +30,8 @@ import io.tebex.headless.model.GiftCard;
 import io.tebex.headless.model.ModulesResponse;
 import io.tebex.headless.model.PackageResponse;
 import io.tebex.headless.model.RemoveGiftCardRequest;
+import io.tebex.headless.model.SingleCategoryResponse;
+import io.tebex.headless.model.SinglePackageResponse;
 import io.tebex.headless.model.UpdateTierRequest;
 import io.tebex.headless.model.UpdateTierResponse;
 import io.tebex.headless.model.WebstoreResponse;
@@ -229,8 +231,8 @@ public class HeadlessApiTest {
      */
     @Test
     public void getCategoryTest() throws ApiException {
-        String basketIdent = null;
-        CategoryResponse response = api.getCategory(basketIdent);
+        String categoryId = null;
+        SingleCategoryResponse response = api.getCategory(categoryId);
         // TODO: test validations
     }
 
@@ -245,7 +247,7 @@ public class HeadlessApiTest {
     public void getCategoryIncludeDynamicPackagesTest() throws ApiException {
         String categoryId = null;
         String basketIdent = null;
-        CategoryResponse response = api.getCategoryIncludeDynamicPackages(categoryId, basketIdent);
+        SingleCategoryResponse response = api.getCategoryIncludeDynamicPackages(categoryId, basketIdent);
         // TODO: test validations
     }
 
@@ -259,7 +261,7 @@ public class HeadlessApiTest {
     @Test
     public void getCategoryIncludePackagesTest() throws ApiException {
         String categoryId = null;
-        CategoryResponse response = api.getCategoryIncludePackages(categoryId);
+        SingleCategoryResponse response = api.getCategoryIncludePackages(categoryId);
         // TODO: test validations
     }
 
@@ -300,7 +302,7 @@ public class HeadlessApiTest {
     @Test
     public void getPackageTest() throws ApiException {
         String packageId = null;
-        PackageResponse response = api.getPackage(packageId);
+        SinglePackageResponse response = api.getPackage(packageId);
         // TODO: test validations
     }
 

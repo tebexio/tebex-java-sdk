@@ -1,0 +1,18 @@
+# 1.0.1
+
+- Feature: Basket packages now expose `is_recurring` via `getIsRecurring()`
+- Feature: Packages now expose `ident` and `vip_status`, and the webstore exposes `supports_usernames` and `supports_gifting`, as typed getters
+
+- Change: `Baskets.addBasketPackage` and `Baskets.removeBasketPackage` now return `BasketResponse` (use `.getData()`) instead of `Basket`
+
+- Fix: Default secret key was an empty string if not provided, which caused confusing API errors.
+- Fix: Parsing error for baskets, a basket without any packages received `links` as an empty array `[]` instead of an expected empty object `{}`
+- Fix: `additionalProperties` are now attached to API models if the API returns a response with extra properties (such as fields the API adds later)
+- Fix: `Baskets.updatePackageQuantity` sent a literal `{packageId}` in its URL; it now takes the package ID as a parameter
+- Fix: `getPackage`, `getCategory`, `getCategoryIncludePackages` and `getCategoryIncludeDynamicPackages` failed to parse single object responses they now return `SinglePackageResponse` / `SingleCategoryResponse`
+- Fix: `getCategory` sent a literal `{categoryId}` in its URL; its parameter is now the category ID
+- Fix: `getAllPackagesWithAuthedIP` and `getAllPackagesWithAuthedIPAndBasket` now declare that they require basic auth (public token and private key)
+- Fix: `getBasketAuthUrl` failed to parse on stores with no login provider; it now returns an empty list
+
+# 1.0.0
+- Initial release
