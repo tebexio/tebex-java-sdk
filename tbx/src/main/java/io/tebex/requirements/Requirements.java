@@ -115,6 +115,11 @@ public class Requirements {
         require("TBX_072", "a recurring payment (subscription) can be fetched by its reference via the checkout api");
         require("TBX_073", "the checkout api authenticates requests with http basic credentials bound via setCredentials");
 
+        require("TBX_074", "a basket returned by the headless api is deserialized even when the api sends its empty links as an array rather than an object");
+        require("TBX_075", "a headless api response containing fields the contract does not define is still deserialized, so fields the api adds later do not break released sdk versions");
+        require("TBX_077", "a basket's login links are returned as an empty list when the store has no login provider, although the api sends an empty array in place of each link");
+        require("TBX_076", "packages can be added to and removed from a headless basket, returning the updated basket, and a package's quantity in the basket can be changed");
+
         require("CFG_001", "the /buy command name can be changed via configuration");
         require("CFG_002", "the /buy command can be disabled via configuration");
         require("CFG_003", "debug mode can be enabled/disabled via configuration");

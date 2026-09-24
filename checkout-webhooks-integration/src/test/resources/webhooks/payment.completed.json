@@ -1,0 +1,73 @@
+{
+  "id": "fcf9cfc9-3708-4942-88f2-78d7e5cd8e72",
+  "type": "payment.completed",
+  "date": "2024-07-02T19:52:07+00:00",
+  "subject": {
+    "transaction_id": "tbx-40514024a64636-f9a1ea",
+    "status": {
+      "id": 1,
+      "description": "Complete"
+    },
+    "payment_sequence": "oneoff",
+    "created_at": "2024-07-02T19:52:05.000000Z",
+    "price": {
+      "amount": 25.99,
+      "currency": "USD"
+    },
+    "price_paid": {
+      "amount": 25.99,
+      "currency": "USD"
+    },
+    "payment_method": {
+      "name": "PayPal",
+      "refundable": true
+    },
+    "fees": {
+      "tax": {
+        "amount": 0,
+        "currency": "USD"
+      },
+      "gateway": {
+        "amount": 1.05,
+        "currency": "USD"
+      }
+    },
+    "customer": {
+      "first_name": "Ted",
+      "last_name": "Tebex",
+      "email": "tebex-integrations@overwolf.com",
+      "ip": "127.0.0.1",
+      "username": null,
+      "marketing_consent": false,
+      "country": "US",
+      "postal_code": "10001"
+    },
+    "products": [
+      {
+        "id": 127,
+        "name": "100 Gold",
+        "quantity": 1,
+        "base_price": {
+          "amount": 25.99,
+          "currency": "USD"
+        },
+        "paid_price": {
+          "amount": 25.99,
+          "currency": "USD"
+        },
+        "variables": [],
+        "expires_at": null,
+        "custom": null,
+        "username": null
+      }
+    ],
+    "coupons": [],
+    "gift_cards": [],
+    "recurring_payment_reference": null,
+    "custom": {
+      "tracking_id": "order-1234"
+    },
+    "revenue_share": [],
+    "decline_reason": null
+  }
+}

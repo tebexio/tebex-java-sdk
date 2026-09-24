@@ -15,7 +15,7 @@ package io.tebex.headless.api;
 
 import io.tebex.headless.invoker.ApiException;
 import io.tebex.headless.model.AddBasketPackageRequest;
-import io.tebex.headless.model.Basket;
+import io.tebex.headless.model.BasketResponse;
 import io.tebex.headless.model.RemoveBasketPackageRequest;
 import io.tebex.headless.model.UpdatePackageQuantityRequest;
 import org.junit.jupiter.api.Disabled;
@@ -45,7 +45,7 @@ public class BasketsApiTest {
     public void addBasketPackageTest() throws ApiException {
         String basketIdent = null;
         AddBasketPackageRequest addBasketPackageRequest = null;
-        Basket response = api.addBasketPackage(basketIdent, addBasketPackageRequest);
+        BasketResponse response = api.addBasketPackage(basketIdent, addBasketPackageRequest);
         // TODO: test validations
     }
 
@@ -60,7 +60,7 @@ public class BasketsApiTest {
     public void removeBasketPackageTest() throws ApiException {
         String basketIdent = null;
         RemoveBasketPackageRequest removeBasketPackageRequest = null;
-        Basket response = api.removeBasketPackage(basketIdent, removeBasketPackageRequest);
+        BasketResponse response = api.removeBasketPackage(basketIdent, removeBasketPackageRequest);
         // TODO: test validations
     }
 
@@ -74,8 +74,9 @@ public class BasketsApiTest {
     @Test
     public void updatePackageQuantityTest() throws ApiException {
         String basketIdent = null;
+        String packageId = null;
         UpdatePackageQuantityRequest updatePackageQuantityRequest = null;
-        api.updatePackageQuantity(basketIdent, updatePackageQuantityRequest);
+        api.updatePackageQuantity(basketIdent, packageId, updatePackageQuantityRequest);
         // TODO: test validations
     }
 

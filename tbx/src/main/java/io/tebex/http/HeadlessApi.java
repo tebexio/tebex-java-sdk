@@ -45,6 +45,12 @@ public final class HeadlessApi {
     /** The public-token server variable name in the OpenAPI contract. */
     private static final String TOKEN_VARIABLE = "token";
 
+    static {
+        // Correct response shapes the generated models would otherwise reject
+        // (e.g. an empty basket's "links": []) before any client is built.
+        HeadlessJson.install();
+    }
+
     /** The generated client backing every endpoint group on this instance. */
     public final ApiClient client;
 

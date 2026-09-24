@@ -50,8 +50,23 @@ jobs:
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
 
+      # The live Headless and Checkout integration tests run here when these
+      # repository secrets are set, and skip (naming the missing variable)
+      # when they are not — including on pull requests from forks, which are
+      # never given secrets. Only the credentials are passed, never the
+      # TEBEX_IT_CHECKOUT_*_REF / *_TXN_ID variables that refund, pause, update
+      # or cancel a real payment.
+      #
+      # Secrets are passed through `env` so they never appear in the command
+      # line, and GitHub masks their values in the log. Uploaded artifacts are
+      # NOT masked, which is why the test reports uploaded below deliberately
+      # leave out headless-integration and checkout-integration.
       - name: Build and verify
         run: ./gradlew build --stacktrace
+        env:
+          TEBEX_IT_PUBLIC_TOKEN: ${{ secrets.TEBEX_IT_PUBLIC_TOKEN }}
+          TEBEX_IT_CHECKOUT_PUBLIC_TOKEN: ${{ secrets.TEBEX_IT_CHECKOUT_PUBLIC_TOKEN }}
+          TEBEX_IT_CHECKOUT_PRIVATE_KEY: ${{ secrets.TEBEX_IT_CHECKOUT_PRIVATE_KEY }}
 
       # The matrix is the human-readable form of the traceability gate: which
       # requirements are covered, by which tests, and what is deferred and why.

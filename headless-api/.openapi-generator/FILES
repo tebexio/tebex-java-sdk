@@ -66,6 +66,8 @@ src/main/java/io/tebex/headless/model/RemoveGiftCardRequest.java
 src/main/java/io/tebex/headless/model/RevenueShare.java
 src/main/java/io/tebex/headless/model/ServerStatusData.java
 src/main/java/io/tebex/headless/model/ServerStatusModule.java
+src/main/java/io/tebex/headless/model/SingleCategoryResponse.java
+src/main/java/io/tebex/headless/model/SinglePackageResponse.java
 src/main/java/io/tebex/headless/model/TextboxData.java
 src/main/java/io/tebex/headless/model/TextboxModule.java
 src/main/java/io/tebex/headless/model/Tier.java
