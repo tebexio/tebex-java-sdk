@@ -1,6 +1,13 @@
 package io.tebex.model;
 
 import com.google.gson.annotations.SerializedName;
+import com.google.gson.annotations.JsonAdapter;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import com.google.gson.stream.JsonWriter;
+import com.google.gson.TypeAdapter;
+import com.google.gson.JsonSyntaxException;
+import java.io.IOException;
 
 /**
  * A community goal, as returned by {@code GET /community_goals} and
@@ -54,7 +61,9 @@ public final class CommunityGoal {
     @SerializedName("status")
     private Status status;
 
+    // The API has returned both JSON booleans and numeric 0/1 flags for sale.
     @SerializedName("sale")
+    @JsonAdapter(SaleFlagAdapter.class)
     private boolean sale;
 
     /**
@@ -206,6 +215,49 @@ public final class CommunityGoal {
     public String toString() {
         return "CommunityGoal{id=" + id + ", name='" + name + "', current=" + current
                 + "/" + target + ", status=" + status + '}';
+    }
+
+    /** Reads the backend's boolean and numeric representations of the sale flag. */
+    public static final class SaleFlagAdapter extends TypeAdapter<Boolean> {
+
+        /**
+         * Reads a sale flag encoded as a JSON boolean or a numeric zero/nonzero value.
+         *
+         * @param reader the JSON reader
+         * @return {@code true} for a boolean true or nonzero number
+         * @throws IOException if the JSON cannot be read
+         */
+        @Override
+        public Boolean read(JsonReader reader) throws IOException {
+            JsonToken token = reader.peek();
+            if (token == JsonToken.BOOLEAN) {
+                return reader.nextBoolean();
+            }
+            if (token == JsonToken.NUMBER) {
+                return reader.nextDouble() != 0.0d;
+            }
+            if (token == JsonToken.NULL) {
+                reader.nextNull();
+                return false;
+            }
+            throw new JsonSyntaxException("Expected a boolean or numeric sale flag but was " + token);
+        }
+
+        /**
+         * Writes the sale flag as a JSON boolean.
+         *
+         * @param writer the JSON writer
+         * @param value the sale flag value
+         * @throws IOException if the JSON cannot be written
+         */
+        @Override
+        public void write(JsonWriter writer, Boolean value) throws IOException {
+            if (value == null) {
+                writer.nullValue();
+            } else {
+                writer.value(value);
+            }
+        }
     }
 
     /**

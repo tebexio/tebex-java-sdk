@@ -51,13 +51,8 @@ public class Requirements {
         require("TBX_035", "deliverable commands with delays are delayed for the requested amount of time");
         require("TBX_036", "commands are marked completed immediately after they apply. they are remembered internally until deleted from tebex, such that a repeat issue of that command makes no changes");
         require("TBX_037", "plugin logs api accepts a valid plugin log");
-        defer("TBX_038", "update check returns true if there is a newer version semantically than our current",
-                "there is no endpoint to check a version against yet: neither the plugin api client nor the "
-                        + "headless contract in this repository exposes one, and inventing a url and payload "
-                        + "shape would make the test prove only that the invention matches itself");
-        defer("TBX_039", "update check returns true if there is a newer plugin version semantically than our current",
-                "deferred with TBX_038 — the same missing endpoint, for the platform plugin's version rather "
-                        + "than the sdk's");
+        require("TBX_038", "the plugin version endpoint reports an update whenever its version differs exactly from the running version");
+        require("TBX_039", "an unavailable, malformed, or failed plugin version check is silent and reports no update");
         require("TBX_040", "tasks that are intended to execute on the main thread can be executed on the main thread");
         require("TBX_041", "the tbx project must never implement or require any minecraft packages");
         require("TBX_042", "a store's public webstore information can be retrieved using the public token with the headless api");
@@ -78,7 +73,6 @@ public class Requirements {
         require("TBX_051", "a checkout url can be created, expecting 201 and surfacing a 400 error_message as the failure reason");
         require("TBX_052", "player join and leave events are sent in batches, halving the batch size when the api rejects it as too large");
         require("TBX_053", "plugin logs are sent to the plugin-log host without a secret key, and the caller's buffer is left untouched");
-        require("TBX_054", "startup telemetry is sent to the analytics host and reports the success flag from the response body");
         require("TBX_055", "store coupons can be listed with pagination, retrieved, created and deleted");
         require("TBX_056", "a coupon request that could not be fulfilled is rejected before any request is sent");
         require("TBX_057", "a player can be banned from the webstore, reporting a refusal as a false result rather than a failure");

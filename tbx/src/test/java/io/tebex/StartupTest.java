@@ -125,7 +125,7 @@ class StartupTest {
         String baseUrl = "http://localhost:" + server.getAddress().getPort();
 
         txe = new TXE();
-        txe.setPluginApi(new PluginApi(baseUrl, baseUrl, baseUrl, new Gson()));
+        txe.setPluginApi(new PluginApi(baseUrl, baseUrl, new Gson()));
         txe.Plugin().HookServerCommand(command -> { });
         return txe;
     }

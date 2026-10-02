@@ -661,6 +661,9 @@ public class TXE {
             CategoryResponse response = headlessApi.Headless.getCategoriesIncludePackages();
             plugin.setCategories(response == null ? null : response.getData());
         } catch (ApiException failed) {
+            if (stop || Thread.currentThread().isInterrupted() || isShutdown(failed)) {
+                return;
+            }
             // Keep the previous catalogue rather than clearing it: a stale listing
             // is more useful than none, and the refresh will be retried.
             log.Warn("Could not refresh the store catalogue: " + rootMessage(failed));

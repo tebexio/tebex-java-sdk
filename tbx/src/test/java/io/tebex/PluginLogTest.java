@@ -304,7 +304,7 @@ class PluginLogTest {
         TXE.Log().SetLogger(logger);
 
         txe = new TXE();
-        txe.setPluginApi(new PluginApi(baseUrl, baseUrl, baseUrl, new com.google.gson.Gson()));
+        txe.setPluginApi(new PluginApi(baseUrl, baseUrl, new com.google.gson.Gson()));
         txe.StartPlugin("bad-key");
 
         awaitUntil(() -> !errors.isEmpty());
@@ -322,7 +322,7 @@ class PluginLogTest {
     void runningEngineCollectsItsOwnLogs() throws IOException {
         String baseUrl = startInformationStub(200, INFORMATION_JSON);
         txe = new TXE();
-        txe.setPluginApi(new PluginApi(baseUrl, baseUrl, baseUrl, new com.google.gson.Gson()));
+        txe.setPluginApi(new PluginApi(baseUrl, baseUrl, new com.google.gson.Gson()));
         txe.Plugin().HookServerCommand(command -> { });
         txe.StartPlugin("valid-secret");
 
@@ -375,7 +375,7 @@ class PluginLogTest {
         String storeWithLoggingOff = INFORMATION_JSON.replace("\"log_events\":true", "\"log_events\":false");
         String baseUrl = startInformationStub(200, storeWithLoggingOff);
         txe = new TXE();
-        txe.setPluginApi(new PluginApi(baseUrl, baseUrl, baseUrl, new com.google.gson.Gson()));
+        txe.setPluginApi(new PluginApi(baseUrl, baseUrl, new com.google.gson.Gson()));
         txe.Plugin().HookServerCommand(command -> { });
         txe.StartPlugin("valid-secret");
 

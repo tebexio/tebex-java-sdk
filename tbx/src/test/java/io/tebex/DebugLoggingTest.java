@@ -171,4 +171,23 @@ class DebugLoggingTest {
                 "the request body must be logged; got: " + logged);
         assertTrue(logged.contains("201"), "the response status must be logged; got: " + logged);
     }
+
+    @Test
+    @Requirement("TBX_039")
+    @DisplayName("TBX_039: an unavailable version endpoint stays silent in debug mode")
+    void failedVersionCheckDoesNotLog() throws IOException {
+        server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        server.createContext("/versions/neoforge", exchange -> {
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+        });
+        server.start();
+        TXE.DEBUG_MODE = true;
+
+        PluginApi api = new PluginApi("http://localhost:" + server.getAddress().getPort());
+        assertTrue(api.checkForUpdate("neoforge", "3.0.0").join() == null);
+
+        assertTrue(records.isEmpty(),
+                "the advisory version check must not produce debug output: " + records);
+    }
 }

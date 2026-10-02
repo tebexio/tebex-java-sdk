@@ -132,7 +132,7 @@ class EngineTimersTest {
         String baseUrl = "http://localhost:" + server.getAddress().getPort();
 
         txe = new TXE();
-        txe.setPluginApi(new PluginApi(baseUrl, baseUrl, baseUrl, new Gson()));
+        txe.setPluginApi(new PluginApi(baseUrl, baseUrl, new Gson()));
         txe.setHeadlessApi(new HeadlessApi(new ApiClient().setBasePath(baseUrl)));
         txe.Plugin().HookServerCommand(command -> { });
         txe.StartPlugin("valid-secret");

@@ -91,7 +91,7 @@ class EventRequeueTest {
         txe = new TXE();
         // The log and analytics hosts are pointed at the stub too, so the
         // plugin-log post is captured by the same /events context.
-        txe.setPluginApi(new PluginApi(baseUrl, baseUrl, baseUrl, new com.google.gson.Gson()));
+        txe.setPluginApi(new PluginApi(baseUrl, baseUrl, new com.google.gson.Gson()));
         txe.Plugin().HookServerCommand(command -> { });
         txe.StartPlugin("valid-secret");
         return txe;

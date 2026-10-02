@@ -17,11 +17,11 @@ import io.tebex.model.OfflineCommandsResponse;
 import io.tebex.model.PaginatedResponse;
 import io.tebex.model.PlayerLookupInfo;
 import io.tebex.model.PluginEvent;
+import io.tebex.model.PluginVersion;
 import io.tebex.model.QueuedCommand;
 import io.tebex.model.QueuedPlayer;
 import io.tebex.model.ServerEvent;
 import io.tebex.model.ServerInformation;
-import io.tebex.model.StartupTelemetry;
 import io.tebex.model.StorePackage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -35,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -56,9 +57,8 @@ import java.util.concurrent.Executors;
  * parallelism is one thread on a two-core machine), so a slow Tebex call there
  * could stall unrelated host work. The SDK must never harm the host (TBX_001).
  *
- * <p><b>Three hosts, not one.</b> The plugin API, the plugin-log intake, and the
- * startup analytics endpoint are separate services on separate domains. Each has
- * its own injectable base URL.
+ * <p><b>Two hosts, not one.</b> The plugin API and plugin-log intake are separate
+ * services on separate domains. Each has its own injectable base URL.
  *
  * <p><b>What this class deliberately does not do.</b> It leaves command strings
  * exactly as the API sent them — their tags are resolved on the dispatch path in
@@ -75,9 +75,6 @@ public final class PluginApi {
 
     /** The production plugin-log intake base URL, a different host to the plugin API. */
     public static final String DEFAULT_LOGS_BASE_URL = "https://plugin-logs.tebex.io";
-
-    /** The production startup-analytics base URL, a different host again. */
-    public static final String DEFAULT_ANALYTICS_BASE_URL = "https://plugin.buycraft.net";
 
     private static final String SECRET_HEADER = "X-Tebex-Secret";
 
@@ -111,7 +108,6 @@ public final class PluginApi {
 
     private final String baseUrl;
     private final String logsBaseUrl;
-    private final String analyticsBaseUrl;
     private final Gson gson;
 
     /**
@@ -123,12 +119,12 @@ public final class PluginApi {
 
     /**
      * Creates a client pointed at a specific plugin API base URL, leaving the log
-     * and analytics hosts at their production values.
+     * host at its production value.
      *
      * @param baseUrl the plugin API base URL, without a trailing slash
      */
     public PluginApi(String baseUrl) {
-        this(baseUrl, DEFAULT_LOGS_BASE_URL, DEFAULT_ANALYTICS_BASE_URL, new Gson());
+        this(baseUrl, DEFAULT_LOGS_BASE_URL, new Gson());
     }
 
     /**
@@ -138,22 +134,20 @@ public final class PluginApi {
      * @param gson    the JSON codec to use
      */
     public PluginApi(String baseUrl, Gson gson) {
-        this(baseUrl, DEFAULT_LOGS_BASE_URL, DEFAULT_ANALYTICS_BASE_URL, gson);
+        this(baseUrl, DEFAULT_LOGS_BASE_URL, gson);
     }
 
     /**
-     * Creates a client with every host overridden, so a test can point all three at
-     * one stub server.
+     * Creates a client with both hosts overridden, so a test can point them at one
+     * stub server.
      *
      * @param baseUrl          the plugin API base URL
      * @param logsBaseUrl      the plugin-log intake base URL
-     * @param analyticsBaseUrl the startup-analytics base URL
      * @param gson             the JSON codec to use
      */
-    public PluginApi(String baseUrl, String logsBaseUrl, String analyticsBaseUrl, Gson gson) {
+    public PluginApi(String baseUrl, String logsBaseUrl, Gson gson) {
         this.baseUrl = stripTrailingSlash(baseUrl);
         this.logsBaseUrl = stripTrailingSlash(logsBaseUrl);
-        this.analyticsBaseUrl = stripTrailingSlash(analyticsBaseUrl);
         this.gson = gson;
     }
 
@@ -178,6 +172,50 @@ public final class PluginApi {
             Response response = send("GET", baseUrl + "/information", secretKey, null);
             return parseInformation(response.statusCode, response.body);
         });
+    }
+
+    /**
+     * Checks the latest published plugin version for a platform via
+     * {@code GET /versions/{platform}}.
+     *
+     * <p>The endpoint is advisory and is not available for every platform. A
+     * missing endpoint, transport failure, malformed response, or version equal
+     * to the running version therefore completes normally with {@code null} and
+     * emits no SDK log output. Versions are compared exactly rather than parsed
+     * semantically: any different non-empty version is treated as an update.
+     *
+     * @param platform       the Tebex platform slug, such as {@code bukkit} or
+     *                       {@code velocity}
+     * @param currentVersion the version currently running
+     * @return a future containing the different published version, or
+     *         {@code null} when no update can be reported
+     */
+    public CompletableFuture<PluginVersion> checkForUpdate(String platform, String currentVersion) {
+        if (platform == null || platform.trim().isEmpty()
+                || currentVersion == null || currentVersion.trim().isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        final String slug = platform.trim().toLowerCase(Locale.ROOT);
+        final String path = "/versions/" + urlEncode(slug);
+        final String running = currentVersion.trim();
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Response response = send("GET", baseUrl + path, null, null, false);
+                if (response.statusCode != 200) {
+                    return null;
+                }
+                PluginVersion latest = fromJson(response.body, PluginVersion.class, path);
+                if (latest == null || latest.getVersion() == null
+                        || latest.getVersion().trim().isEmpty()
+                        || running.equals(latest.getVersion().trim())) {
+                    return null;
+                }
+                return latest;
+            } catch (RuntimeException ignored) {
+                return null;
+            }
+        }, REQUEST_EXECUTOR);
     }
 
     // ------------------------------------------------------------------
@@ -412,26 +450,6 @@ public final class PluginApi {
         return CompletableFuture.supplyAsync(
                 () -> sendInBatches(events, logsBaseUrl + "/events", null, -1),
                 REQUEST_EXECUTOR);
-    }
-
-    /**
-     * Reports server startup analytics.
-     *
-     * <p>Targets the analytics host, and answers {@code {"success": true}} rather
-     * than using the status code alone.
-     *
-     * @param secretKey the store secret key
-     * @param telemetry the payload describing the host server and plugin
-     * @return a future completing with the {@code success} flag from the response
-     */
-    public CompletableFuture<Boolean> sendTelemetry(String secretKey, StartupTelemetry telemetry) {
-        return authenticated(secretKey, () -> {
-            Response response = send("POST", analyticsBaseUrl + "/analytics/startup",
-                    secretKey, gson.toJson(telemetry));
-            expectStatus(response, 200, "/analytics/startup");
-            JsonObject parsed = readJsonObject(response.body, "/analytics/startup");
-            return parsed.has("success") && parsed.get("success").getAsBoolean();
-        });
     }
 
     // ------------------------------------------------------------------
@@ -770,8 +788,26 @@ public final class PluginApi {
      * @return the status code and body of the response
      */
     private Response send(String method, String url, String secretKey, String body) {
+        return send(method, url, secretKey, body, true);
+    }
+
+    /**
+     * Performs an HTTP request, optionally excluding it from debug output for
+     * advisory calls whose failures must remain silent.
+     *
+     * @param method       the HTTP method
+     * @param url          the absolute URL to call
+     * @param secretKey    the secret key to authenticate with, or {@code null}
+     * @param body         the request body, or {@code null} for none
+     * @param debugEnabled whether request and response details may be logged
+     * @return the status code and body of the response
+     */
+    private Response send(
+            String method, String url, String secretKey, String body, boolean debugEnabled) {
         HttpURLConnection connection = null;
-        debug(method + " " + url + (body == null ? "" : " body=" + body));
+        if (debugEnabled) {
+            debug(method + " " + url + (body == null ? "" : " body=" + body));
+        }
         try {
             connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod(method);
@@ -779,6 +815,7 @@ public final class PluginApi {
                 connection.setRequestProperty(SECRET_HEADER, secretKey);
             }
             connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("User-Agent", "Tebex-Java-SDK/1.0.1");
             connection.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
             connection.setReadTimeout(READ_TIMEOUT_MILLIS);
 
@@ -797,7 +834,10 @@ public final class PluginApi {
 
             int statusCode = connection.getResponseCode();
             String responseBody = readBody(connection, statusCode);
-            debug("<- " + statusCode + " " + url + (responseBody.isEmpty() ? "" : " body=" + responseBody));
+            if (debugEnabled) {
+                debug("<- " + statusCode + " " + url
+                        + (responseBody.isEmpty() ? "" : " body=" + responseBody));
+            }
             return new Response(statusCode, responseBody);
         } catch (IOException err) {
             // A transport failure is not an authentication failure: surface it as

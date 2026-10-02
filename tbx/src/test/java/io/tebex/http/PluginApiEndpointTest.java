@@ -24,10 +24,10 @@ import io.tebex.model.OfflineCommandsResponse;
 import io.tebex.model.PaginatedResponse;
 import io.tebex.model.PlayerLookupInfo;
 import io.tebex.model.PluginEvent;
+import io.tebex.model.PluginVersion;
 import io.tebex.model.QueuedCommand;
 import io.tebex.model.QueuedPlayer;
 import io.tebex.model.ServerEvent;
-import io.tebex.model.StartupTelemetry;
 import io.tebex.model.StorePackage;
 import io.tebex.requirements.Requirement;
 import java.io.ByteArrayOutputStream;
@@ -72,7 +72,7 @@ class PluginApiEndpointTest {
 
     /**
      * Starts a stub server whose single handler answers every path, and returns a
-     * client with all three hosts pointed at it.
+     * client with both hosts pointed at it.
      *
      * @param handler the handler to serve requests with
      * @return a client bound to the stub server
@@ -83,7 +83,7 @@ class PluginApiEndpointTest {
         server.createContext("/", handler);
         server.start();
         String base = "http://localhost:" + server.getAddress().getPort();
-        return new PluginApi(base, base, base, new com.google.gson.Gson());
+        return new PluginApi(base, base, new com.google.gson.Gson());
     }
 
     /**
@@ -135,6 +135,48 @@ class PluginApiEndpointTest {
             }
         }
         return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+    }
+
+    // ------------------------------------------------------------------
+    // Advisory plugin version check
+    // ------------------------------------------------------------------
+
+    @Test
+    @Requirement("TBX_038")
+    @DisplayName("TBX_038: any exact version mismatch is reported as an update")
+    void versionCheckUsesAnExactComparison() throws IOException {
+        AtomicReference<String> path = new AtomicReference<>();
+        PluginApi api = clientFor(exchange -> {
+            path.set(exchange.getRequestURI().getRawPath());
+            respond(exchange, 200,
+                    "{\"version\":\"2.4.6\",\"released\":\"2026-08-24T18:22:09+0000\"}");
+        });
+
+        PluginVersion update = api.checkForUpdate("Bukkit", "3.0.0").join();
+
+        assertNotNull(update, "a different version is an update even when it is numerically lower");
+        assertEquals("2.4.6", update.getVersion());
+        assertEquals("2026-08-24T18:22:09+0000", update.getReleased());
+        assertEquals("/versions/bukkit", path.get());
+        assertNull(api.checkForUpdate("bukkit", "2.4.6").join(),
+                "an exact match must not be announced");
+    }
+
+    @Test
+    @Requirement("TBX_039")
+    @DisplayName("TBX_039: unavailable, malformed, and failed version checks report nothing")
+    void versionCheckFailuresAreSuppressed() throws IOException {
+        PluginApi unavailable = clientReturning(404,
+                "{\"error_code\":404,\"error_message\":\"Not available\"}");
+        assertNull(unavailable.checkForUpdate("neoforge", "3.0.0").join());
+        stopServer();
+
+        PluginApi malformed = clientReturning(200, "not-json");
+        assertNull(malformed.checkForUpdate("bukkit", "3.0.0").join());
+        stopServer();
+
+        assertNull(malformed.checkForUpdate("bukkit", "3.0.0").join(),
+                "a transport failure must complete normally with no update");
     }
 
     // ------------------------------------------------------------------
@@ -516,7 +558,7 @@ class PluginApiEndpointTest {
                 + "\"updated_at\":\"2026-01-02 00:00:00\",\"account\":1,\"name\":\"New Spawn\","
                 + "\"description\":\"Fund it\",\"image\":\"\",\"target\":100.0,\"current\":25.0,"
                 + "\"repeatable\":1,\"last_achieved\":null,\"times_achieved\":0,"
-                + "\"status\":\"active\",\"sale\":false}";
+                + "\"status\":\"active\",\"sale\":1}";
 
         PluginApi api = clientReturning(200, "[" + goal + "]");
         List<CommunityGoal> goals = api.getCommunityGoals(SECRET).join();
@@ -527,6 +569,7 @@ class PluginApiEndpointTest {
         assertEquals(CommunityGoal.Status.ACTIVE, parsed.getStatus());
         // repeatable arrives as 0/1, not a JSON boolean.
         assertTrue(parsed.isRepeatable());
+        assertTrue(parsed.isSale(), "sale also arrives as a numeric 0/1 flag");
         assertNull(parsed.getImage(), "an empty image must normalise to null");
         assertEquals(0.25, parsed.getProgress(), 0.0001);
         assertNull(parsed.getLastAchieved());
@@ -541,13 +584,14 @@ class PluginApiEndpointTest {
     @DisplayName("TBX_021: a zero-target goal reports zero progress rather than NaN")
     void zeroTargetGoalDoesNotDivideByZero() throws IOException {
         PluginApi api = clientReturning(200,
-                "{\"id\":1,\"target\":0.0,\"current\":5.0,\"repeatable\":0,\"status\":\"completed\"}");
+                "{\"id\":1,\"target\":0.0,\"current\":5.0,\"repeatable\":0,\"sale\":0,\"status\":\"completed\"}");
 
         CommunityGoal goal = api.getCommunityGoal(SECRET, 1).join();
 
         assertEquals(0.0, goal.getProgress(), 0.0001);
         assertFalse(Double.isNaN(goal.getProgress()), "a malformed goal must not yield NaN");
         assertFalse(goal.isRepeatable());
+        assertFalse(goal.isSale(), "numeric zero must represent a false sale flag");
     }
 
     // ------------------------------------------------------------------
@@ -680,30 +724,6 @@ class PluginApiEndpointTest {
 
         assertFalse(api.sendPluginEvents(events).join(),
                 "a log failure must not fail the future; logs are best-effort");
-    }
-
-    @Test
-    @Requirement("TBX_054")
-    @DisplayName("TBX_054: telemetry reports the success flag from the response body")
-    void telemetryReadsSuccessFlag() throws IOException {
-        AtomicReference<String> body = new AtomicReference<>();
-        AtomicReference<String> path = new AtomicReference<>();
-        PluginApi api = clientFor(exchange -> {
-            path.set(exchange.getRequestURI().getPath());
-            body.set(readRequest(exchange));
-            respond(exchange, 200, "{\"success\":true}");
-        });
-
-        StartupTelemetry telemetry = new StartupTelemetry("BUKKIT", "1.21.1", true, "3.0.0");
-        assertTrue(api.sendTelemetry(SECRET, telemetry).join());
-        assertEquals("/analytics/startup", path.get());
-        assertTrue(body.get().contains("\"platform\":\"BUKKIT\""));
-        assertTrue(body.get().contains("\"version\":\"3.0.0\""));
-        stopServer();
-
-        // A 200 whose body says success=false must be reported as false.
-        PluginApi refused = clientReturning(200, "{\"success\":false}");
-        assertFalse(refused.sendTelemetry(SECRET, telemetry).join());
     }
 
     // ------------------------------------------------------------------
